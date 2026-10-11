@@ -13,6 +13,18 @@ import com.getcapacitor.WebViewListener;
 
 public class MainActivity extends BridgeActivity {
     private long lastWebViewRecoveryAt = 0L;
+    /**
+     * How many renderer rebuilds we run back to back before giving up.
+     *
+     * The old policy was "recreate once, then finish()": a second renderer death inside 15 seconds
+     * closed the activity, and that is exactly what a user reports as 闪退 (the app vanishes).
+     * A renderer death is the system reclaiming a sandboxed process — surfacing it in the same
+     * activity is the normal, recoverable path for Chromium on Android, so rebuild a few times
+     * before treating the page as unloadable. The crash trail records every death either way.
+     */
+    private static final int MAX_BACK_TO_BACK_RENDERER_RECOVERIES = 3;
+    private static final long RENDERER_RECOVERY_WINDOW_MS = 60_000L;
+    private int rendererRecoveries = 0;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -44,9 +56,10 @@ public class MainActivity extends BridgeActivity {
     }
 
     /**
-     * A dead WebView renderer kills the Android process when the client returns false.
-     * Record the reason, then recreate once; a repeated death exits normally instead of
-     * entering a renderer restart loop.
+     * A dead WebView renderer kills the Android process when the client returns false, so we take
+     * the callback, record why it ended, and rebuild the activity. Repeated deaths still end the
+     * app, but only after several rebuilds inside a minute: closing on the second one turned a
+     * recoverable renderer kill into the app disappearing mid-use.
      */
     private void installWebViewRendererGuard() {
         getBridge().addWebViewListener(new WebViewListener() {
@@ -66,13 +79,18 @@ public class MainActivity extends BridgeActivity {
                 long now = SystemClock.elapsedRealtime();
                 runOnUiThread(() -> {
                     if (isFinishing() || isDestroyed()) return;
-                    if (now - lastWebViewRecoveryAt > 15_000L) {
-                        lastWebViewRecoveryAt = now;
-                        if (view != null) view.destroy();
-                        recreate();
-                    } else {
+                    // A quiet minute means the previous rebuild held: start counting again.
+                    if (now - lastWebViewRecoveryAt > RENDERER_RECOVERY_WINDOW_MS) rendererRecoveries = 0;
+                    lastWebViewRecoveryAt = now;
+                    rendererRecoveries += 1;
+                    if (rendererRecoveries > MAX_BACK_TO_BACK_RENDERER_RECOVERIES) {
+                        // Still dying after several rebuilds: better to stop than to loop forever.
+                        // The crash trail above already says what the renderer reported.
                         finish();
+                        return;
                     }
+                    if (view != null) view.destroy();
+                    recreate();
                 });
                 return true;
             }

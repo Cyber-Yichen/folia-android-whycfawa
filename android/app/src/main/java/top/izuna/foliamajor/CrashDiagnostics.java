@@ -110,7 +110,10 @@ public final class CrashDiagnostics {
             entry.put("sdk", Build.VERSION.SDK_INT);
             next.put(entry);
 
-            preferences.edit().putString(KEY_HISTORY, next.toString()).apply();
+            // commit(), not apply(): the records this class exists for are written on the way out
+            // (a renderer death, an uncaught exception), and an asynchronous write can be lost when
+            // the process goes away right afterwards — which is how a crash ended up as "(none)".
+            preferences.edit().putString(KEY_HISTORY, next.toString()).commit();
         } catch (Exception ignored) {
             // Crash recording must never become a second crash.
         }
