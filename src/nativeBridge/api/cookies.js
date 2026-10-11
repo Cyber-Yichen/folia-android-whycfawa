@@ -29,6 +29,11 @@ const QQ_URLS = [
 ];
 const QQ_COOKIE_KEYS = [
   'uin', 'p_uin', 'wxuin', 'qqmusic_uin', 'qm_keyst', 'qqmusic_key', 'music_key',
+  // 加密账号 id。QQ 读「自己的歌单 / 我喜欢」要用它当 enc_host_uin；少了它就会退回成微信 uin 或
+  // 裸 QQ 号，服务器把请求当别人（歌单广场缓存）来答：只回一个带 total 的空壳，songlist 是空的。
+  // 登录响应里会写下这个名字，但它只在这份清单里才活得下来 —— 不在清单里，就是从 cookie 罐读回
+  // 会话时被丢掉，而存储里的那份会话（saveProviderCookie）并不总在。
+  'str_musicid', 'encryptUin', 'encrypt_uin',
   'p_skey', 'skey', 'wxskey', 'login_type', 'vipType', 'vip_type', 'green_vip_level',
   'luxury_vip_level', 'music_vip_level', 'psrf_qqaccess_token', 'psrf_qqrefresh_token',
   'wxuin', 'wxopenid', 'tmeLoginType',
