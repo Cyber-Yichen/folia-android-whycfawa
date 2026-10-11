@@ -1,5 +1,6 @@
 import CryptoJS from '../vendor/crypto-es.mjs';
 import { noteLibraryStep } from './libraryTrace.js';
+import { buildQrDataUrl } from './qrImage.js';
 import {
   clearCookieCache,
   getKGCookie as readKGCookie,
@@ -4290,25 +4291,15 @@ async function kgFetchWebSignedGet(baseURL, urlPath, extraParams, fetchOptions) 
   }, fetchOptions || {}));
 }
 
-function kgBytesToBase64(bytes) {
-  let binary = '';
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
-  }
-  return btoa(binary);
-}
-
+/**
+ * 二维码图本地画（见 qrImage.js）：以前这里去 `api.qrserver.com` 取 PNG，那台机器不通时
+ * 整个酷狗扫码就没有图可看。保持 async 是为了不改调用方。
+ */
 async function kgBuildQrDataUrl(text) {
   text = String(text || '').trim();
   if (!text) return '';
   try {
-    const resp = await fetch(
-      `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=10&data=${encodeURIComponent(text)}`,
-    );
-    if (!resp.ok) return '';
-    const buf = new Uint8Array(await resp.arrayBuffer());
-    return buf.length ? `data:image/png;base64,${kgBytesToBase64(buf)}` : '';
+    return buildQrDataUrl(text);
   } catch (_) {
     return '';
   }

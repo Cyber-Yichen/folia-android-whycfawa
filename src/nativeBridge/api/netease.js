@@ -3,6 +3,7 @@ import { eapiRequest } from './eapi.js';
 import { getNeteaseCookie, hasNeteaseLogin, parseCookieString, saveProviderCookie, setBrowserCookies, getNeteaseMusicU } from './cookies.js';
 import { handleQQSongComments } from './qq.js';
 import { noteQrLoginStep, resetQrLoginTrace } from './qrLoginTrace.js';
+import { buildQrDataUrl } from './qrImage.js';
 
 const HOME_FEATURED_REVIEW_FALLBACKS = [
   { provider: 'netease', source: 'netease', type: 'song', id: 190137, name: '七月上', artist: 'Jam' },
@@ -1100,29 +1101,6 @@ const withNeteaseQrTimeout = (promise, label, timeoutMs = NETEASE_QR_TIMEOUT_MS)
   );
 });
 
-/**
- * The QR bitmap is fetched through the bridge's own fetch instead of handing `<img>` a third-party
- * URL: on Android that request is proxied by the native client, and the caller gets a self-contained
- * data URL that cannot end up as a broken image in the WebView. Returns '' when it cannot be
- * inlined, and the caller falls back to the remote URL.
- */
-async function neteaseQrImageDataUrl(src) {
-  try {
-    const response = await withNeteaseQrTimeout(fetch(src), '获取二维码图片', 8000);
-    if (!response || !response.ok) return '';
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (!bytes.length) return '';
-    let binary = '';
-    const chunk = 0x8000;
-    for (let index = 0; index < bytes.length; index += chunk) {
-      binary += String.fromCharCode(...bytes.subarray(index, index + chunk));
-    }
-    return `data:image/png;base64,${btoa(binary)}`;
-  } catch (_) {
-    return '';
-  }
-}
-
 export async function handleLoginQrKey() {
   // A new session always starts here, so this is also where the per-session step trace resets.
   resetQrLoginTrace();
@@ -1159,11 +1137,16 @@ export async function handleLoginQrKey() {
 export async function handleLoginQrCreate(key) {
   if (!key) throw new Error('缺少二维码 key');
   const url = buildLoginQrUrl(key);
-  const remote = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=0&data=${encodeURIComponent(url)}`;
   noteQrLoginStep('ne:qr:create:start');
-  const inline = await neteaseQrImageDataUrl(remote);
-  noteQrLoginStep(inline ? 'ne:qr:create:ok' : 'ne:qr:create:fallback');
-  const img = inline || remote;
+  let img = '';
+  try {
+    img = buildQrDataUrl(url);
+    noteQrLoginStep('ne:qr:create:ok', { local: true });
+  } catch (err) {
+    // 本地编码不花网络，只有在内容超出版本 40 容量时才会失败；真到那一步才退回第三方出图。
+    noteQrLoginStep('ne:qr:create:fallback', { message: err && err.message ? err.message : String(err) });
+    img = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=0&data=${encodeURIComponent(url)}`;
+  }
   return { img, qrimg: img, url };
 }
 

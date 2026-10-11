@@ -8,7 +8,7 @@
     "email": "chthollyphile@users.noreply.github.com"
   },
   "private": true,
-  "version": "0.7.17-android.124",
+  "version": "0.7.17-android.125",
   "license": "AGPL-3.0",
   "type": "module",
   "engines": {
@@ -58,7 +58,8 @@
     "bodian-music-api": "0.1.2",
     "fflate": "^0.8.3",
     "file-type": "^21.3.4",
-    "music-metadata": "^11.16.1"
+    "music-metadata": "^11.16.1",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@applemusic-like-lyrics/ttml": "^1.0.1",

@@ -1,5 +1,6 @@
 import CryptoJS from '../vendor/crypto-es.mjs';
 import { noteLibraryStep } from './libraryTrace.js';
+import { buildQrDataUrl } from './qrImage.js';
 
 // Browser/Android adaptation of bodian-music-api@0.1.2. The desktop package uses node:https,
 // node:crypto and node:zlib; this implementation uses WebView fetch, crypto-es and browser
@@ -516,9 +517,14 @@ const createAuthOperations = (client) => {
       if (!currentQr(key)) throw new BodianError('unavailable', 'Bodian QR code expired');
       const url = new URL('https://bodian-oia.kuwo.cn/bodian/download.html');
       url.search = new URLSearchParams({ pageName: 'login_pc', pt: '3', id: key }).toString();
-      return {
-        imageUrl: `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=3&data=${encodeURIComponent(url.toString())}`,
-      };
+      // 二维码图本地画（见 qrImage.js）：不再依赖 api.qrserver.com。
+      try {
+        return { imageUrl: buildQrDataUrl(url.toString()) };
+      } catch (_) {
+        return {
+          imageUrl: `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=3&data=${encodeURIComponent(url.toString())}`,
+        };
+      }
     },
     async login_qr_check({ key }) {
       const qr = currentQr(key);
