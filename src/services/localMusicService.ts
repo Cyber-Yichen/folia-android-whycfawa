@@ -25,6 +25,7 @@ import {
 import { hasLocalCoverBinary } from './localCoverBinaryStore';
 import { hasLocalSongCover } from '../utils/localSongCover';
 import { createFoliaIgnoreMatcher, isIgnoredByFoliaMatchers, type FoliaIgnoreMatcher } from '../utils/foliaIgnore';
+import { noteLocalLibraryDiagnostic } from '../utils/localLibraryDiagnostics';
 import { getLocalLibraryAvailability } from './localLibraryAvailability';
 import { useLyricSettingsStore } from '../stores/useLyricSettingsStore';
 import { getLocalLyricFilePriority, isSameLocalLyricFormatOrder, normalizeLocalLyricFormatOrder, type LocalLyricFileFormat } from '../utils/lyrics/localLyricFormatOrder';
@@ -1920,6 +1921,9 @@ export async function getAudioFromFile(file: File): Promise<string> {
 export async function deleteSongsByIds(songIds: string[]): Promise<void> {
     const uniqueSongIds = Array.from(new Set(songIds));
     if (uniqueSongIds.length === 0) return;
+    const startedAt = Date.now();
+    noteLocalLibraryDiagnostic('delete:start', { songs: uniqueSongIds.length });
+    try {
     const allSongs = await getLocalSongs();
     const deletedIdSet = new Set(uniqueSongIds);
     const deletedSongs = allSongs.filter(song => deletedIdSet.has(song.id));
@@ -1930,11 +1934,6 @@ export async function deleteSongsByIds(songIds: string[]): Promise<void> {
     );
     // 安卓「挑选导入」的音频是复制进 App 私有目录的：库里删了，那份副本也得跟着删，
     // 否则它会一直留着占空间（只清自己写出的 imported-*，MediaStore 的歌是引用不删）。
-    void deleteAndroidImportedAudio(
-        deletedSongs
-            .map(song => song.nativeAudioRef)
-            .filter((ref): ref is string => Boolean(ref)),
-    ).catch(error => console.warn('[LocalMusic] Failed to delete imported android audio:', error));
     uniqueSongIds.forEach(id => {
         fileHandleMap.delete(id);
         localCoverAssetRequestMap.delete(id);
@@ -1943,10 +1942,26 @@ export async function deleteSongsByIds(songIds: string[]): Promise<void> {
         dbDeleteLocalSongs(uniqueSongIds),
         ...uniqueSongIds.map(id => removeCachedCover(`cover_local_${id}`)),
     ]);
+    // 副本删除失败不该把整次删除回滚（数据库记录已经清掉了），但必须等它做完并留下诊断：
+    // 报告里的 delete:done 会写明请求了几首、删掉几份、失败几份。
+    await deleteAndroidImportedAudio(
+        deletedSongs
+            .map(song => song.nativeAudioRef)
+            .filter((ref): ref is string => Boolean(ref)),
+    ).catch(error => console.warn('[LocalMusic] Failed to delete imported android audio:', error));
     await removeDeletedSongIdsFromPlaylists(uniqueSongIds);
     await Promise.all(Array.from(affectedRoots).map(cleanupDirHandleIfUnused));
     notifyLocalMusicUpdated();
+    noteLocalLibraryDiagnostic('delete:done', { songs: uniqueSongIds.length, ms: Date.now() - startedAt });
     console.log(`[LocalMusic] Deleted ${uniqueSongIds.length} songs by ID`);
+    } catch (error) {
+        noteLocalLibraryDiagnostic('delete:error', {
+            songs: uniqueSongIds.length,
+            ms: Date.now() - startedAt,
+            message: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+    }
 }
 
 // Removes an imported root from the app, including empty roots, without deleting disk files.
