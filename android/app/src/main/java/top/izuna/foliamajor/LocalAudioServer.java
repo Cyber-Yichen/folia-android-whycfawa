@@ -110,9 +110,12 @@ final class LocalAudioServer {
     }
 
     private void handle(Socket socket) {
+        // output 必须在 catch 里也可见才能回一个带原因的 HTTP 错误，所以它在 try 之外声明；
+        // 它的生命周期跟着 client 走（client 关闭即关闭）。
+        BufferedOutputStream output = null;
         try (Socket client = socket;
-             BufferedInputStream input = new BufferedInputStream(client.getInputStream());
-             BufferedOutputStream output = new BufferedOutputStream(client.getOutputStream())) {
+             BufferedInputStream input = new BufferedInputStream(client.getInputStream())) {
+            output = new BufferedOutputStream(client.getOutputStream());
             String requestLine = readLine(input);
             if (requestLine == null) return;
             String[] requestParts = requestLine.split(" ");
@@ -157,7 +160,21 @@ final class LocalAudioServer {
                 return;
             }
             streamMediaStoreFile(output, requestParts, headers, token);
-        } catch (Exception ignored) {
+        } catch (Exception error) {
+            // 以前这里是一个空 catch：MediaStore 的权限异常、文件已被删、私有副本丢失，全都表现为
+            // 「socket 被直接关掉」——播放器只报一个没有原因的失败，诊断报告里也什么都看不到。
+            // 现在既回一个明确的 HTTP 错误，也把原因记进崩溃诊断（报告里能直接读到）。
+            CrashDiagnostics.record(
+                context,
+                "local-audio-server",
+                "server",
+                error
+            );
+            try {
+                writeStatus(output, 500, "Local audio stream failed: " + error.getClass().getSimpleName());
+            } catch (Exception ignoredWrite) {
+                // The socket may already be gone; the crash trail above is the important part.
+            }
         }
     }
 
