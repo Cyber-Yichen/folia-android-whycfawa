@@ -1181,7 +1181,31 @@ async function handleFoliaKugouRequest(input, url) {
       data: { info: items, list: items, songs: items, total: items.length },
     };
   }
-  if (operation === 'everyday_recommend' || operation === 'personal_fm' || operation === 'top_card_youth') {
+  if (operation === 'everyday_recommend') {
+    // 每日推荐：POST /everyday_song_recommend（android 签名 + x-router everydayrec.service.kugou.com），
+    // 与 KuGouMusicApi 的 module/everyday_recommend.js 一致。以前这里是「成功 + 空数组」的占位实现，
+    // 界面拿到的是「成功但一首都没有」，所以每日推荐永远是空的 —— 不是没登录，也不是网络问题。
+    const body = await kgPostAndroidSigned(
+      'https://gateway.kugou.com',
+      '/everyday_song_recommend',
+      cookie,
+      { platform: 'ios' },
+      {},
+      { 'x-router': 'everydayrec.service.kugou.com' },
+    );
+    const data = (body && body.data) || body || {};
+    const songs = Array.isArray(data.song_list) ? data.song_list
+      : Array.isArray(data.songs) ? data.songs
+      : Array.isArray(data.info) ? data.info
+      : [];
+    return {
+      status: 1,
+      error_code: 0,
+      data: { ...data, info: songs, songs, total: data.total || songs.length },
+    };
+  }
+  if (operation === 'personal_fm' || operation === 'top_card_youth') {
+    // 仍未实现（见本文件顶部说明）：私人 FM 与青年卡还没有对应实现，先保持空。
     return { status: 1, error_code: 0, data: { info: [], songs: [], lists: [], total: 0 } };
   }
   if (operation === 'everyday_history') {
