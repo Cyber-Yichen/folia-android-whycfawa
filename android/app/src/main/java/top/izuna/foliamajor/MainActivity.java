@@ -1,5 +1,6 @@
 package top.izuna.foliamajor;
 
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.webkit.RenderProcessGoneDetail;
@@ -10,6 +11,8 @@ import androidx.activity.OnBackPressedCallback;
 
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.WebViewListener;
+
+import java.io.File;
 
 public class MainActivity extends BridgeActivity {
     private long lastWebViewRecoveryAt = 0L;
@@ -24,11 +27,14 @@ public class MainActivity extends BridgeActivity {
      */
     private static final int MAX_BACK_TO_BACK_RENDERER_RECOVERIES = 3;
     private static final long RENDERER_RECOVERY_WINDOW_MS = 60_000L;
+    private static final String WEBVIEW_UPDATE_PREFS = "folia_webview_update";
+    private static final String WEBVIEW_UPDATE_KEY = "last_cleared_update_time";
     private int rendererRecoveries = 0;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         CrashDiagnostics.install(getApplicationContext());
+        clearWebViewCachesAfterAppUpdate();
         registerPlugin(FoliaNativePlugin.class);
         super.onCreate(savedInstanceState);
         installWebViewRendererGuard();
@@ -53,6 +59,57 @@ public class MainActivity extends BridgeActivity {
         webView.postDelayed(() -> restoreAdaptiveLayout(webView), 1500);
         webView.postDelayed(() -> PhoneFitCutout.apply(this), 500);
         webView.postDelayed(() -> PhoneFitCutout.apply(this), 1500);
+    }
+
+    /**
+     * The PWA service worker caches index.html and every hashed asset. After an APK update the
+     * cached index.html can reference chunks that no longer exist in the new package, and that
+     * first launch has to run the old JS before the new bundle can repair anything. Clear only
+     * WebView's HTTP / service-worker / code caches once per install so the first launch reads the
+     * fresh index.html from the APK. Cookies, localStorage and IndexedDB are deliberately kept.
+     */
+    private void clearWebViewCachesAfterAppUpdate() {
+        long updateTime;
+        try {
+            updateTime = getPackageManager().getPackageInfo(getPackageName(), 0).lastUpdateTime;
+        } catch (Exception error) {
+            CrashDiagnostics.recordText(
+                getApplicationContext(),
+                "webview-cache-cleanup",
+                "main",
+                "package-info-error",
+                error.getClass().getSimpleName() + ": " + error.getMessage(),
+                "Could not read lastUpdateTime"
+            );
+            return;
+        }
+
+        SharedPreferences preferences = getSharedPreferences(WEBVIEW_UPDATE_PREFS, MODE_PRIVATE);
+        if (preferences.getLong(WEBVIEW_UPDATE_KEY, -1L) == updateTime) return;
+        preferences.edit().putLong(WEBVIEW_UPDATE_KEY, updateTime).apply();
+
+        File webViewRoot = new File(getDataDir(), "app_webview/Default");
+        String[] cachePaths = {
+            "HTTP Cache",
+            "Code Cache",
+            "GPUCache",
+            "DawnGraphiteCache",
+            "DawnWebGPUCache",
+            "Service Worker",
+            "Cache",
+        };
+        for (String path : cachePaths) deleteQuietly(new File(webViewRoot, path));
+    }
+
+    private static void deleteQuietly(File file) {
+        if (file == null || !file.exists()) return;
+        File[] children = file.listFiles();
+        if (children != null) {
+            for (File child : children) deleteQuietly(child);
+        }
+        // Failure is non-fatal: the JS-side recovery still handles a stale chunk reference.
+        //noinspection ResultOfMethodCallIgnored
+        file.delete();
     }
 
     /**

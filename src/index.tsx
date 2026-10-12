@@ -2,6 +2,7 @@ import { Buffer } from 'buffer';
 import { installGlobalVisualizerFrameRateLimiter } from './utils/frameRateLimiter';
 import { installConsoleLogCapture } from './utils/consoleLogBuffer';
 import { installCrashDiagnostics } from './utils/crashDiagnostics';
+import { installChunkLoadRecovery } from './utils/chunkLoadRecovery';
 import { installDebugModule } from './services/debug/debugModule';
 import { installMemorySampleFeed } from './services/debug/memorySamples';
 import { installFrameTimingDiagnostics } from './utils/frameTimingDiagnostics';
@@ -15,6 +16,8 @@ globalThis.Buffer = Buffer;
 // to reach a library or restore a session shows up.
 installConsoleLogCapture();
 installCrashDiagnostics();
+// 覆盖安装时旧 index.html 可能引用已被替换掉的 chunk：先装恢复器，再让 React 启动。
+installChunkLoadRecovery();
 // Right after it, so the startup lines reach the runtime log file too and not only the in-memory
 // buffer. Both no-op off Electron. See services/debug/debugModule.ts.
 installDebugModule();

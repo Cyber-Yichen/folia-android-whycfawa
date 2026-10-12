@@ -5,6 +5,7 @@ import './index.css';
 import './styles/androidPhoneFit.css';
 import App from './App';
 import AppSplashGate from './components/AppSplashGate';
+import ChunkLoadBoundary from './components/app/ChunkLoadBoundary';
 import RemoteControlApp from './components/remote/RemoteControlApp';
 import ObsBrowserSourceApp from './components/obs/ObsBrowserSourceApp';
 import ObsNowPlayingSourceApp from './components/obs/ObsNowPlayingSourceApp';
@@ -56,17 +57,19 @@ const isRemoteControl = isRemoteControlSurface;
 const isMainApp = isMainAppSurface;
 const renderApp = () => root.render(
     <React.StrictMode>
-      <AppSplashGate>
-        {isNowPlayingObsSource
-          ? <ObsNowPlayingSourceApp />
-          : isPlayerCapObsSource
-            ? <ObsPlayerCapSourceApp />
-            : isObsBrowserSource
-              ? <ObsBrowserSourceApp />
-              : isRemoteControl
-                ? <RemoteControlApp />
-                : <App />}
-      </AppSplashGate>
+      <ChunkLoadBoundary>
+        <AppSplashGate>
+          {isNowPlayingObsSource
+            ? <ObsNowPlayingSourceApp />
+            : isPlayerCapObsSource
+              ? <ObsPlayerCapSourceApp />
+              : isObsBrowserSource
+                ? <ObsBrowserSourceApp />
+                : isRemoteControl
+                  ? <RemoteControlApp />
+                  : <App />}
+        </AppSplashGate>
+      </ChunkLoadBoundary>
     </React.StrictMode>
   );
 
