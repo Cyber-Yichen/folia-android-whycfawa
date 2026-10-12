@@ -1532,7 +1532,11 @@ export async function deleteLocalSong(id: string): Promise<void> {
 }
 
 function getRootFolderName(song: LocalSong): string | null {
-    const pathLike = song.filePath || song.folderName;
+    // folderName 才是资料库里的「导入根」名（安卓导入是「Android 文件导入」），而 filePath 是平台
+    // 内部路径（安卓导入写成 Android/Imported/<id>）——两者在安卓上并不一致。以前先取 filePath，
+    // 于是根名算成 "Android"，而确认框传进来的是 "Android 文件导入"，过滤一首歌都匹配不到：
+    // 「删除文件夹」既不删记录也不报错，点了跟没点一样。桌面导入两边本来就同名前缀，行为不变。
+    const pathLike = song.folderName || song.filePath;
     if (!pathLike) return null;
 
     const [rootFolderName] = pathLike.split('/');
