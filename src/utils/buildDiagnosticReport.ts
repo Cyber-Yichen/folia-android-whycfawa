@@ -11,6 +11,7 @@ import { isNeutralAudioEffects } from './audioEffects';
 import { getCollectionOrderDiagnosticLines } from './collectionOrderDiagnostics';
 import { getLyricsDiagnosticLines } from './lyricsDiagnostics';
 import { getLocalLibraryDiagnosticLines } from './localLibraryDiagnostics';
+import { collectWebGL2Diagnostics, formatWebGL2DiagnosticsLine } from './webglDiagnostics';
 
 // src/utils/buildDiagnosticReport.ts
 // 设置 → 帮助 → 复制诊断数据。给用户原样贴进 issue 用，所以字段固定为英文并包在代码块里。
@@ -497,6 +498,10 @@ export const buildDiagnosticReport = async (): Promise<string> => {
         '',
         'playback continuity:',
         ...readPlaybackContinuityLines(),
+        '',
+        // 漫游背景 / 部分可视化依赖 WebGL2：把真实能力写进报告，避免只能让用户在浏览器另测。
+        'graphics capability:',
+        formatWebGL2DiagnosticsLine(collectWebGL2Diagnostics()),
         '',
         // 卡顿分流：帧耗时 + 长任务 + 处理器探针，用来区分我们的渲染开销和设备性能。
         'frame timing:',
