@@ -3,6 +3,8 @@ import {
     resolveTemperaTuningDefaults,
     temperaPostProcessCompressionDefault,
 } from '../services/temperaTuningDefaults';
+import { resolveLumiereTuningDefaults } from '../services/lumiereTuningDefaults';
+import { isCapacitorAndroid } from '../platform/runtime';
 
 // 只做字符串校验，走 types/visualizerModes 而不是 registry：后者的 eager glob 会把 13 个
 // renderer（含 three.js）拉进来，而这里读的只是一个 localStorage 字符串。
@@ -491,14 +493,39 @@ export const readStoredTemperaTuning = (): TemperaTuning => {
 
 export const LUMIERE_TUNING_STORAGE_KEY = 'lumiere_tuning';
 
-export const readStoredLumiereTuning = (): LumiereTuning => {
-    if (typeof window === 'undefined') return DEFAULT_LUMIERE_TUNING;
-    const saved = localStorage.getItem(LUMIERE_TUNING_STORAGE_KEY);
-    if (!saved) return DEFAULT_LUMIERE_TUNING;
+/**
+ * 存量存档里的绘光画质是旧默认值 `full`，安卓上迁移一次到 `balanced`。
+ *
+ * 和凝彩的纹理压缩一样，这个标记只写一次：迁移过之后用户手动调回 `full` 不会再被改回去。
+ */
+const LUMIERE_ANDROID_QUALITY_MIGRATION_KEY = 'lumiere_android_quality_v1';
+
+const migrateAndroidLumiereQuality = (tuning: LumiereTuning): LumiereTuning => {
+    if (typeof window === 'undefined' || !isCapacitorAndroid()) return tuning;
+    if (tuning.renderQuality !== 'full') return tuning;
     try {
-        return normalizeLumiereTuning(JSON.parse(saved));
+        if (localStorage.getItem(LUMIERE_ANDROID_QUALITY_MIGRATION_KEY) === '1') return tuning;
+        localStorage.setItem(LUMIERE_ANDROID_QUALITY_MIGRATION_KEY, '1');
     } catch {
-        return DEFAULT_LUMIERE_TUNING;
+        return tuning;
+    }
+    const migrated: LumiereTuning = { ...tuning, renderQuality: 'balanced' };
+    try {
+        localStorage.setItem(LUMIERE_TUNING_STORAGE_KEY, JSON.stringify(migrated));
+    } catch {
+        // 存不下来也先把这次会话跑起来。
+    }
+    return migrated;
+};
+
+export const readStoredLumiereTuning = (): LumiereTuning => {
+    if (typeof window === 'undefined') return resolveLumiereTuningDefaults();
+    const saved = localStorage.getItem(LUMIERE_TUNING_STORAGE_KEY);
+    if (!saved) return resolveLumiereTuningDefaults();
+    try {
+        return migrateAndroidLumiereQuality(normalizeLumiereTuning(JSON.parse(saved)));
+    } catch {
+        return resolveLumiereTuningDefaults();
     }
 };
 
