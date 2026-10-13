@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
     buildDiagnosticFileName,
+    canDeleteExportedDiagnostics,
+    deleteExportedDiagnostics,
     exportDiagnosticReport,
 } from '@/services/exportDiagnosticReport';
 
@@ -72,7 +74,10 @@ describe('diagnostic export target', () => {
 
         expect(result).toBe('shared');
         expect(shareImpl).toHaveBeenCalledTimes(1);
-        const payload = shareImpl.mock.calls[0][0] as { files: FakeFile[]; title: string };
+        const payload = ((shareImpl.mock.calls as unknown[][])[0] as unknown[])[0] as {
+            files: FakeFile[];
+            title: string;
+        };
         expect(payload.title).toBe('Export diagnostics');
         expect(payload.files[0].name).toMatch(/^folia-diagnostics-\d{8}-\d{6}\.txt$/);
         expect(payload.files[0].parts).toEqual(['report body']);
@@ -85,5 +90,25 @@ describe('diagnostic export target', () => {
 
         await expect(exportDiagnosticReport('report body', 'Export diagnostics'))
             .resolves.toBe('cancelled');
+    });
+});
+
+describe('diagnostic deletion', () => {
+    it('is unavailable without the native plugin', async () => {
+        vi.stubGlobal('window', {});
+
+        expect(canDeleteExportedDiagnostics()).toBe(false);
+        await expect(deleteExportedDiagnostics()).resolves.toBe(0);
+    });
+
+    it('reports how many exported files the native side removed', async () => {
+        const deleteDiagnosticFiles = vi.fn(async () => ({ deleted: 3 }));
+        vi.stubGlobal('window', {
+            Capacitor: { Plugins: { FoliaNative: { deleteDiagnosticFiles } } },
+        });
+
+        expect(canDeleteExportedDiagnostics()).toBe(true);
+        await expect(deleteExportedDiagnostics()).resolves.toBe(3);
+        expect(deleteDiagnosticFiles).toHaveBeenCalledTimes(1);
     });
 });

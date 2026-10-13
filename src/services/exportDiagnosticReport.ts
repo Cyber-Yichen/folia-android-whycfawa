@@ -19,6 +19,7 @@ type ShareTextFileOptions = {
 
 type DiagnosticSharePlugin = {
     shareTextFile?: (options: ShareTextFileOptions) => Promise<unknown>;
+    deleteDiagnosticFiles?: () => Promise<{ deleted?: number }>;
 };
 
 const DIAGNOSTIC_FILE_BASENAME = 'folia-diagnostics';
@@ -95,4 +96,21 @@ export const exportDiagnosticReport = async (
 
     downloadFile(filename, content);
     return 'downloaded';
+};
+
+/**
+ * 「删除诊断」只在原生插件在场时可用。
+ *
+ * 桌面端的导出是浏览器下载，落到用户的下载目录，App 没有权限也没有必要去清理；
+ * 安卓端每次导出都会在 App 缓存目录留一份 txt，这里提供配套的清理入口。
+ */
+export const canDeleteExportedDiagnostics = (): boolean =>
+    typeof getNativePlugin()?.deleteDiagnosticFiles === 'function';
+
+/** 清掉之前导出的诊断 txt，返回实际删除的文件数。 */
+export const deleteExportedDiagnostics = async (): Promise<number> => {
+    const plugin = getNativePlugin();
+    if (typeof plugin?.deleteDiagnosticFiles !== 'function') return 0;
+    const result = await plugin.deleteDiagnosticFiles();
+    return typeof result?.deleted === 'number' ? result.deleted : 0;
 };

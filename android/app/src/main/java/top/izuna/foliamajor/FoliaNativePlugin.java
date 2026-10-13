@@ -569,6 +569,22 @@ public class FoliaNativePlugin extends Plugin {
         }
     }
 
+    /** 「删除诊断」：清掉之前导出到缓存目录的诊断 txt，返回实际删除的文件数。 */
+    @PluginMethod
+    public void deleteDiagnosticFiles(PluginCall call) {
+        int deleted = 0;
+        File directory = new File(getContext().getCacheDir(), "diagnostics");
+        File[] files = directory.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                if (file.isFile() && file.delete()) deleted++;
+            }
+        }
+        JSObject result = new JSObject();
+        result.put("deleted", deleted);
+        call.resolve(result);
+    }
+
     /** 只保留文件名，挡掉路径分隔符和 `..`，并保证以 .txt 结尾。 */
     private static String sanitizeDiagnosticFileName(String rawName) {
         String name = rawName == null ? "" : rawName.trim();
