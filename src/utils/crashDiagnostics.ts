@@ -125,14 +125,23 @@ export const readCrashDiagnostics = async (): Promise<CrashDiagnosticEntry[]> =>
     return readLocal().slice(-MAX_LOCAL_RECORDS);
 };
 
-export const readLastPlaybackHeartbeat = async (): Promise<string | null> => {
+export type PlaybackHeartbeatSnapshot = {
+    last: string | null;
+    previous: string | null;
+};
+
+export const readPlaybackHeartbeats = async (): Promise<PlaybackHeartbeatSnapshot> => {
     const plugin = getNativePlugin();
-    if (!plugin?.getCrashDiagnostics) return null;
+    if (!plugin?.getCrashDiagnostics) return { last: null, previous: null };
     try {
         const result = await plugin.getCrashDiagnostics();
-        return typeof result?.heartbeat === 'string' && result.heartbeat ? result.heartbeat : null;
+        const read = (value: unknown) => (typeof value === 'string' && value ? value : null);
+        return {
+            last: read(result?.heartbeat),
+            previous: read(result?.previousHeartbeat),
+        };
     } catch {
-        return null;
+        return { last: null, previous: null };
     }
 };
 

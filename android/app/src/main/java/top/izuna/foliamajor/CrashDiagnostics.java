@@ -31,6 +31,7 @@ public final class CrashDiagnostics {
     private static final String PREFS = "folia_crash_diagnostics";
     private static final String KEY_HISTORY = "history";
     private static final String KEY_LAST_HEARTBEAT = "last_heartbeat";
+    private static final String KEY_PREVIOUS_HEARTBEAT = "previous_heartbeat";
     private static final String KEY_LAST_EXIT_TIMESTAMP = "last_exit_timestamp";
     private static final int MAX_RECORDS = 20;
     private static final int MAX_STACK_CHARS = 12_000;
@@ -54,6 +55,17 @@ public final class CrashDiagnostics {
         if (installed || context == null) return;
         installed = true;
         Context appContext = context.getApplicationContext();
+        // Keep the immediately preceding session's last breadcrumb before the new session
+        // overwrites it; this is what survives an abrupt process death.
+        try {
+            SharedPreferences preferences = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            String previousHeartbeat = preferences.getString(KEY_LAST_HEARTBEAT, "");
+            if (!previousHeartbeat.isEmpty()) {
+                preferences.edit().putString(KEY_PREVIOUS_HEARTBEAT, previousHeartbeat).apply();
+            }
+        } catch (Exception ignored) {
+            // Heartbeat archiving is best-effort.
+        }
         final Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler((thread, error) -> {
             record(appContext, "native-uncaught", thread == null ? "unknown" : thread.getName(), error);
@@ -164,6 +176,16 @@ public final class CrashDiagnostics {
         try {
             return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .getString(KEY_LAST_HEARTBEAT, "");
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
+
+    public static String readPreviousHeartbeat(Context context) {
+        if (context == null) return "";
+        try {
+            return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_PREVIOUS_HEARTBEAT, "");
         } catch (Exception ignored) {
             return "";
         }

@@ -888,6 +888,7 @@ public class FoliaNativePlugin extends Plugin {
         JSObject result = new JSObject();
         result.put("history", CrashDiagnostics.read(getContext()));
         result.put("heartbeat", CrashDiagnostics.readHeartbeat(getContext()));
+        result.put("previousHeartbeat", CrashDiagnostics.readPreviousHeartbeat(getContext()));
         call.resolve(result);
     }
 

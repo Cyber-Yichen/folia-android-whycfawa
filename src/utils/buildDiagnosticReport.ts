@@ -2,7 +2,7 @@ import { getLibraryTraceLines } from '../nativeBridge/api/libraryTrace.js';
 import { getQrLoginTraceLines } from '../nativeBridge/api/qrLoginTrace.js';
 import { useAudioSettingsStore } from '../stores/useAudioSettingsStore';
 import { usePlaybackStore } from '../stores/usePlaybackStore';
-import { readCrashDiagnostics, readLastPlaybackHeartbeat } from './crashDiagnostics';
+import { readCrashDiagnostics, readPlaybackHeartbeats } from './crashDiagnostics';
 import { readPlaybackContinuitySnapshot } from './mediaDiagnostics';
 import { readFrameTimingSnapshot, runCpuProbe } from './frameTimingDiagnostics';
 import { readLastAiThemeAttempt, readAiThemeAttempts, readFailedAiThemeAttempts } from './aiThemeDiagnostics';
@@ -509,7 +509,7 @@ const formatAiThemeAttempt = (entry: {
 
 export const buildDiagnosticReport = async (): Promise<string> => {
     const appVersion = typeof __APP_VERSION__ === 'undefined' ? 'unknown' : __APP_VERSION__;
-    const playbackHeartbeat = await readLastPlaybackHeartbeat();
+    const playbackHeartbeat = await readPlaybackHeartbeats();
     const capacitor = (window as unknown as { Capacitor?: { getPlatform?: () => string; isNativePlatform?: () => boolean } }).Capacitor;
     const lines: string[] = [
         '### Folia diagnostics',
@@ -542,7 +542,8 @@ export const buildDiagnosticReport = async (): Promise<string> => {
         ...readPlaybackContinuityLines(),
         '',
         'playback heartbeat:',
-        `  last: ${formatPlaybackHeartbeat(playbackHeartbeat)}`,
+        `  previous: ${formatPlaybackHeartbeat(playbackHeartbeat.previous)}`,
+        `  last: ${formatPlaybackHeartbeat(playbackHeartbeat.last)}`,
         '',
         // 漫游背景 / 部分可视化依赖 WebGL2：把真实能力写进报告，避免只能让用户在浏览器另测。
         'graphics capability:',
