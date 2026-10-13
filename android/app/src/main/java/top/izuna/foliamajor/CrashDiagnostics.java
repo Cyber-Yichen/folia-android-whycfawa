@@ -32,6 +32,8 @@ public final class CrashDiagnostics {
     private static final String KEY_HISTORY = "history";
     private static final String KEY_LAST_HEARTBEAT = "last_heartbeat";
     private static final String KEY_PREVIOUS_HEARTBEAT = "previous_heartbeat";
+    private static final String KEY_LAST_SERVICE_HEARTBEAT = "last_service_heartbeat";
+    private static final String KEY_PREVIOUS_SERVICE_HEARTBEAT = "previous_service_heartbeat";
     private static final String KEY_LAST_EXIT_TIMESTAMP = "last_exit_timestamp";
     private static final int MAX_RECORDS = 20;
     private static final int MAX_STACK_CHARS = 12_000;
@@ -62,6 +64,10 @@ public final class CrashDiagnostics {
             String previousHeartbeat = preferences.getString(KEY_LAST_HEARTBEAT, "");
             if (!previousHeartbeat.isEmpty()) {
                 preferences.edit().putString(KEY_PREVIOUS_HEARTBEAT, previousHeartbeat).apply();
+            }
+            String previousServiceHeartbeat = preferences.getString(KEY_LAST_SERVICE_HEARTBEAT, "");
+            if (!previousServiceHeartbeat.isEmpty()) {
+                preferences.edit().putString(KEY_PREVIOUS_SERVICE_HEARTBEAT, previousServiceHeartbeat).apply();
             }
         } catch (Exception ignored) {
             // Heartbeat archiving is best-effort.
@@ -186,6 +192,36 @@ public final class CrashDiagnostics {
         try {
             return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .getString(KEY_PREVIOUS_HEARTBEAT, "");
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
+
+    public static void recordServiceHeartbeat(Context context, String payload) {
+        if (context == null) return;
+        try {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putString(KEY_LAST_SERVICE_HEARTBEAT, limit(payload, 2_000))
+                .apply();
+        } catch (Exception ignored) {}
+    }
+
+    public static String readServiceHeartbeat(Context context) {
+        if (context == null) return "";
+        try {
+            return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_LAST_SERVICE_HEARTBEAT, "");
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
+
+    public static String readPreviousServiceHeartbeat(Context context) {
+        if (context == null) return "";
+        try {
+            return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_PREVIOUS_SERVICE_HEARTBEAT, "");
         } catch (Exception ignored) {
             return "";
         }

@@ -2,7 +2,7 @@ import { getLibraryTraceLines } from '../nativeBridge/api/libraryTrace.js';
 import { getQrLoginTraceLines } from '../nativeBridge/api/qrLoginTrace.js';
 import { useAudioSettingsStore } from '../stores/useAudioSettingsStore';
 import { usePlaybackStore } from '../stores/usePlaybackStore';
-import { readCrashDiagnostics, readPlaybackHeartbeats } from './crashDiagnostics';
+import { readCrashDiagnostics, readDiagnosticsHeartbeats } from './crashDiagnostics';
 import { readPlaybackContinuitySnapshot } from './mediaDiagnostics';
 import { readFrameTimingSnapshot, runCpuProbe } from './frameTimingDiagnostics';
 import { readLastAiThemeAttempt, readAiThemeAttempts, readFailedAiThemeAttempts } from './aiThemeDiagnostics';
@@ -54,6 +54,21 @@ const formatPlaybackHeartbeat = (raw: string | null): string => {
             + ` visibility=${value.visibility ?? 'unknown'}`
             + ` foreground=${value.foreground === true}`
             + ` screenOn=${value.screenOn === true}`;
+    } catch {
+        return raw;
+    }
+};
+
+const formatServiceHeartbeat = (raw: string | null): string => {
+    if (!raw) return '(none)';
+    try {
+        const value = JSON.parse(raw) as Record<string, unknown>;
+        const at = typeof value.at === 'number' ? new Date(value.at).toISOString() : 'unknown';
+        return `at=${at}`
+            + ` playing=${value.playing === true}`
+            + ` wakeLock=${value.wakeLock ?? 'unknown'}`
+            + ` wifiLock=${value.wifiLock ?? 'unknown'}`
+            + ` foreground=${value.foreground === true}`;
     } catch {
         return raw;
     }
@@ -509,7 +524,7 @@ const formatAiThemeAttempt = (entry: {
 
 export const buildDiagnosticReport = async (): Promise<string> => {
     const appVersion = typeof __APP_VERSION__ === 'undefined' ? 'unknown' : __APP_VERSION__;
-    const playbackHeartbeat = await readPlaybackHeartbeats();
+    const heartbeats = await readDiagnosticsHeartbeats();
     const capacitor = (window as unknown as { Capacitor?: { getPlatform?: () => string; isNativePlatform?: () => boolean } }).Capacitor;
     const lines: string[] = [
         '### Folia diagnostics',
@@ -542,8 +557,12 @@ export const buildDiagnosticReport = async (): Promise<string> => {
         ...readPlaybackContinuityLines(),
         '',
         'playback heartbeat:',
-        `  previous: ${formatPlaybackHeartbeat(playbackHeartbeat.previous)}`,
-        `  last: ${formatPlaybackHeartbeat(playbackHeartbeat.last)}`,
+        `  previous: ${formatPlaybackHeartbeat(heartbeats.playback.previous)}`,
+        `  last: ${formatPlaybackHeartbeat(heartbeats.playback.last)}`,
+        '',
+        'service heartbeat:',
+        `  previous: ${formatServiceHeartbeat(heartbeats.service.previous)}`,
+        `  last: ${formatServiceHeartbeat(heartbeats.service.last)}`,
         '',
         // 漫游背景 / 部分可视化依赖 WebGL2：把真实能力写进报告，避免只能让用户在浏览器另测。
         'graphics capability:',

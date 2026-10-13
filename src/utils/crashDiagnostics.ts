@@ -125,23 +125,38 @@ export const readCrashDiagnostics = async (): Promise<CrashDiagnosticEntry[]> =>
     return readLocal().slice(-MAX_LOCAL_RECORDS);
 };
 
-export type PlaybackHeartbeatSnapshot = {
+export type HeartbeatSnapshot = {
     last: string | null;
     previous: string | null;
 };
 
-export const readPlaybackHeartbeats = async (): Promise<PlaybackHeartbeatSnapshot> => {
+export type DiagnosticsHeartbeats = {
+    playback: HeartbeatSnapshot;
+    service: HeartbeatSnapshot;
+};
+
+const emptyHeartbeat = (): HeartbeatSnapshot => ({ last: null, previous: null });
+
+export const readDiagnosticsHeartbeats = async (): Promise<DiagnosticsHeartbeats> => {
     const plugin = getNativePlugin();
-    if (!plugin?.getCrashDiagnostics) return { last: null, previous: null };
+    if (!plugin?.getCrashDiagnostics) {
+        return { playback: emptyHeartbeat(), service: emptyHeartbeat() };
+    }
     try {
         const result = await plugin.getCrashDiagnostics();
         const read = (value: unknown) => (typeof value === 'string' && value ? value : null);
         return {
-            last: read(result?.heartbeat),
-            previous: read(result?.previousHeartbeat),
+            playback: {
+                last: read(result?.heartbeat),
+                previous: read(result?.previousHeartbeat),
+            },
+            service: {
+                last: read(result?.serviceHeartbeat),
+                previous: read(result?.previousServiceHeartbeat),
+            },
         };
     } catch {
-        return { last: null, previous: null };
+        return { playback: emptyHeartbeat(), service: emptyHeartbeat() };
     }
 };
 

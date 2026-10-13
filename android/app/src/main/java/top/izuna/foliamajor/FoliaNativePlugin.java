@@ -919,6 +919,8 @@ public class FoliaNativePlugin extends Plugin {
         result.put("history", CrashDiagnostics.read(getContext()));
         result.put("heartbeat", CrashDiagnostics.readHeartbeat(getContext()));
         result.put("previousHeartbeat", CrashDiagnostics.readPreviousHeartbeat(getContext()));
+        result.put("serviceHeartbeat", CrashDiagnostics.readServiceHeartbeat(getContext()));
+        result.put("previousServiceHeartbeat", CrashDiagnostics.readPreviousServiceHeartbeat(getContext()));
         call.resolve(result);
     }
 

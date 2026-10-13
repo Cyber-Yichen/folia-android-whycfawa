@@ -31,6 +31,8 @@ import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
 
+import org.json.JSONObject;
+
 public class FoliaPlaybackService extends Service {
     private static final String CHANNEL_ID = "folia_playback";
     private static final int NOTIFICATION_ID = 31009;
@@ -46,6 +48,15 @@ public class FoliaPlaybackService extends Service {
     private PowerManager.WakeLock wakeLock;
     private WifiManager.WifiLock wifiLock;
     private static volatile String powerDiagnostic = "inactive";
+    private static final long SERVICE_HEARTBEAT_INTERVAL_MS = 10_000L;
+    private volatile boolean lastPlaying = false;
+    private final Runnable serviceHeartbeatRunnable = new Runnable() {
+        @Override
+        public void run() {
+            recordServiceHeartbeat();
+            mainHandler.postDelayed(this, SERVICE_HEARTBEAT_INTERVAL_MS);
+        }
+    };
 
     @Override
     public void onCreate() {
@@ -73,11 +84,14 @@ public class FoliaPlaybackService extends Service {
             wifiLock = wifiManager.createWifiLock(lockMode, "Folia:Playback");
             wifiLock.setReferenceCounted(false);
         }
+        recordServiceLifecycle("service-create", "Foreground playback service created");
+        mainHandler.post(serviceHeartbeatRunnable);
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null || "clear".equals(intent.getAction())) {
+            recordServiceLifecycle("service-stop-command", "Stop command received");
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -87,6 +101,8 @@ public class FoliaPlaybackService extends Service {
         String album = intent.getStringExtra("album");
         String coverUrl = intent.getStringExtra("coverUrl");
         boolean playing = intent.getBooleanExtra("playing", false);
+        lastPlaying = playing;
+        recordServiceLifecycle("service-start", "playing=" + playing);
         long position = intent.getLongExtra("position", 0);
         long duration = intent.getLongExtra("duration", 0);
         currentArtworkUrl = coverUrl == null ? "" : coverUrl.trim();
@@ -334,8 +350,35 @@ public class FoliaPlaybackService extends Service {
         FoliaNativePlugin.emitMediaAction(action);
     }
 
+    private void recordServiceLifecycle(String type, String message) {
+        CrashDiagnostics.recordText(
+            getApplicationContext(),
+            "service-lifecycle",
+            "service",
+            type,
+            message,
+            "FoliaPlaybackService"
+        );
+    }
+
+    private void recordServiceHeartbeat() {
+        try {
+            JSONObject payload = new JSONObject();
+            payload.put("at", System.currentTimeMillis());
+            payload.put("playing", lastPlaying);
+            payload.put("wakeLock", wakeLock != null && wakeLock.isHeld() ? "held" : "released");
+            payload.put("wifiLock", wifiLock != null && wifiLock.isHeld() ? "held" : "released");
+            payload.put("foreground", true);
+            CrashDiagnostics.recordServiceHeartbeat(getApplicationContext(), payload.toString());
+        } catch (Exception ignored) {
+            // A missed heartbeat is harmless; the next one is 10 seconds away.
+        }
+    }
+
     @Override
     public void onDestroy() {
+        recordServiceLifecycle("service-destroy", "Foreground playback service destroyed");
+        mainHandler.removeCallbacks(serviceHeartbeatRunnable);
         updatePlaybackLocks(false);
         artworkExecutor.shutdownNow();
         if (mediaSession != null) {
