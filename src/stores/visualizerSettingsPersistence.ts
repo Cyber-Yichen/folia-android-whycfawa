@@ -1,4 +1,9 @@
 import { DEFAULT_CADENZA_TUNING, DEFAULT_CAPPELLA_TUNING, DEFAULT_CLADDAGH_TUNING, DEFAULT_CLASSIC_TUNING, DEFAULT_DIORAMA_TUNING, DEFAULT_FUME_TUNING, DEFAULT_LATENT_BACKGROUND_TUNING, DEFAULT_LUMIERE_TUNING, DEFAULT_MONET_BACKGROUND_TUNING, DEFAULT_MONET_TUNING, DEFAULT_NOMAND_BACKGROUND_TUNING, DEFAULT_PARTITA_TUNING, DEFAULT_PENDOLO_TUNING, DEFAULT_SONNET_TUNING, DEFAULT_SORA_BACKGROUND_TUNING, DEFAULT_TEMPERA_LAYER_IMAGE, DEFAULT_TEMPERA_TUNING, DEFAULT_TILT_TUNING, DIORAMA_PARTICLE_DENSITY_MAX, DIORAMA_PARTICLE_DENSITY_MIN, DIORAMA_PARTICLE_GLOW_INTENSITY_MAX, DIORAMA_PARTICLE_GLOW_INTENSITY_MIN, DIORAMA_PARTICLE_SIZE_MAX, DIORAMA_PARTICLE_SIZE_MIN, TEMPERA_MAX_LAYER_IMAGES, type CadenzaTuning, type CappellaAvatarSource, type CappellaTuning, type ClassicTuning, type CladdaghTuning, type DioramaTuning, type FumeTuning, type LatentBackgroundColorSource, type LatentBackgroundDisplayMode, type LatentBackgroundTuning, type LumiereTuning, type MonetBackgroundLayout, type MonetBackgroundSource, type MonetBackgroundTuning, type MonetBackgroundWashColorMode, type MonetPortraitSource, type MonetTuning, type NomandBackgroundDitheringType, type NomandBackgroundEffect, type NomandBackgroundSource, type NomandBackgroundTuning, type PartitaTuning, type PendoloTuning, type SonnetTuning, type SoraBackgroundTuning, type TemperaLayerImage, type TemperaTuning, type TiltTuning, type UrlBackgroundItem, type VisualizerBackgroundMode, type VisualizerFrameRate, type VisualizerMode } from '../types';
+import {
+    resolveTemperaTuningDefaults,
+    temperaPostProcessCompressionDefault,
+} from '../services/temperaTuningDefaults';
+
 // 只做字符串校验，走 types/visualizerModes 而不是 registry：后者的 eager glob 会把 13 个
 // renderer（含 three.js）拉进来，而这里读的只是一个 localStorage 字符串。
 // mod 模式在启动时本来就看不到——bootstrap.tsx 的 restoreStoredModVisualizer 在 mods 注册完
@@ -437,7 +442,7 @@ export const resolveStoredTemperaTuning = (parsed: Partial<TemperaTuning>): Temp
         : DEFAULT_TEMPERA_TUNING.postProcessEnabled,
     postProcessTextureCompression: typeof parsed.postProcessTextureCompression === 'boolean'
         ? parsed.postProcessTextureCompression
-        : DEFAULT_TEMPERA_TUNING.postProcessTextureCompression,
+        : temperaPostProcessCompressionDefault(),
     postProcessGrain: resolvePendoloNumber(parsed.postProcessGrain, DEFAULT_TEMPERA_TUNING.postProcessGrain, 0, 1),
     postProcessContrast: resolvePendoloNumber(parsed.postProcessContrast, DEFAULT_TEMPERA_TUNING.postProcessContrast, 0, 1),
     postProcessRgbShift: resolvePendoloNumber(parsed.postProcessRgbShift, DEFAULT_TEMPERA_TUNING.postProcessRgbShift, 0, 1),
@@ -445,14 +450,42 @@ export const resolveStoredTemperaTuning = (parsed: Partial<TemperaTuning>): Temp
     postProcessLensDistortion: resolvePendoloNumber(parsed.postProcessLensDistortion, DEFAULT_TEMPERA_TUNING.postProcessLensDistortion, 0, 2),
 });
 
-export const readStoredTemperaTuning = (): TemperaTuning => {
-    if (typeof window === 'undefined') return DEFAULT_TEMPERA_TUNING;
-    const saved = localStorage.getItem('tempera_tuning');
-    if (!saved) return DEFAULT_TEMPERA_TUNING;
+/**
+ * 存量存档里的 `postProcessTextureCompression` 是旧默认值 `false`，安卓上要迁移一次。
+ *
+ * 这个标记只在安卓上写一次：迁移过之后用户再手动关掉就不会被重新打开，所以这不是
+ * 「强制压缩」，而是「把旧默认值换成新的平台默认值」。
+ */
+const TEMPERA_ANDROID_COMPRESSION_MIGRATION_KEY = 'tempera_android_compression_v1';
+
+const migrateAndroidTextureCompression = (tuning: TemperaTuning): TemperaTuning => {
+    if (typeof window === 'undefined' || tuning.postProcessTextureCompression) return tuning;
+    if (!temperaPostProcessCompressionDefault()) return tuning;
     try {
-        return resolveStoredTemperaTuning(JSON.parse(saved) as Partial<TemperaTuning>);
+        if (localStorage.getItem(TEMPERA_ANDROID_COMPRESSION_MIGRATION_KEY) === '1') return tuning;
+        localStorage.setItem(TEMPERA_ANDROID_COMPRESSION_MIGRATION_KEY, '1');
     } catch {
-        return DEFAULT_TEMPERA_TUNING;
+        return tuning;
+    }
+    const migrated = { ...tuning, postProcessTextureCompression: true };
+    try {
+        localStorage.setItem('tempera_tuning', JSON.stringify(migrated));
+    } catch {
+        // 存不下来也先把这次会话跑起来。
+    }
+    return migrated;
+};
+
+export const readStoredTemperaTuning = (): TemperaTuning => {
+    if (typeof window === 'undefined') return resolveTemperaTuningDefaults();
+    const saved = localStorage.getItem('tempera_tuning');
+    if (!saved) return resolveTemperaTuningDefaults();
+    try {
+        return migrateAndroidTextureCompression(
+            resolveStoredTemperaTuning(JSON.parse(saved) as Partial<TemperaTuning>),
+        );
+    } catch {
+        return resolveTemperaTuningDefaults();
     }
 };
 
