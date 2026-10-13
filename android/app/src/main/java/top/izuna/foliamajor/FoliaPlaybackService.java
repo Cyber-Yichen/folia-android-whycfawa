@@ -134,6 +134,19 @@ public class FoliaPlaybackService extends Service {
         return START_STICKY;
     }
 
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        CrashDiagnostics.recordText(
+            getApplicationContext(),
+            "activity-lifecycle",
+            "service",
+            "task-removed",
+            "Task removed from recents",
+            "FoliaPlaybackService.onTaskRemoved"
+        );
+        super.onTaskRemoved(rootIntent);
+    }
+
     private MediaMetadata buildMetadata(
         String title,
         String artist,

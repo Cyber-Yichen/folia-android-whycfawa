@@ -31,6 +31,9 @@ public class MainActivity extends BridgeActivity {
     private static final String WEBVIEW_UPDATE_PREFS = "folia_webview_update";
     private static final String WEBVIEW_UPDATE_KEY = "last_cleared_update_time";
     private int rendererRecoveries = 0;
+    private long lastUserLeaveRecordAt = 0L;
+    private long lastTrimMemoryRecordAt = 0L;
+    private int lastTrimMemoryLevel = Integer.MIN_VALUE;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -160,10 +163,27 @@ public class MainActivity extends BridgeActivity {
                     if (rendererRecoveries > MAX_BACK_TO_BACK_RENDERER_RECOVERIES) {
                         // Still dying after several rebuilds: better to stop than to loop forever.
                         // The crash trail above already says what the renderer reported.
+                        CrashDiagnostics.recordText(
+                            getApplicationContext(),
+                            "webview-renderer-gone",
+                            "renderer",
+                            "renderer-give-up",
+                            "rendererRecoveries=" + rendererRecoveries
+                                + " windowMs=" + RENDERER_RECOVERY_WINDOW_MS,
+                            "finish after repeated renderer deaths"
+                        );
                         finish();
                         return;
                     }
                     if (view != null) view.destroy();
+                    CrashDiagnostics.recordText(
+                        getApplicationContext(),
+                        "webview-renderer-guard",
+                        "main",
+                        "recreate",
+                        "attempt=" + rendererRecoveries + " didCrash=" + didCrash,
+                        "rebuilding activity after renderer death"
+                    );
                     recreate();
                 });
                 return true;
@@ -185,12 +205,18 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onUserLeaveHint() {
+        long now = SystemClock.elapsedRealtime();
+        if (now - lastUserLeaveRecordAt < 3000L) {
+            super.onUserLeaveHint();
+            return;
+        }
+        lastUserLeaveRecordAt = now;
         CrashDiagnostics.recordText(
             getApplicationContext(),
             "activity-lifecycle",
             "main",
             "user-leave",
-            "Home or Recents pressed",
+            "User left the app (Home, Recents, or app switch)",
             "onUserLeaveHint"
         );
         super.onUserLeaveHint();
@@ -224,7 +250,11 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onTrimMemory(int level) {
-        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+        long now = SystemClock.elapsedRealtime();
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW
+            && (level != lastTrimMemoryLevel || now - lastTrimMemoryRecordAt >= 10000L)) {
+            lastTrimMemoryLevel = level;
+            lastTrimMemoryRecordAt = now;
             CrashDiagnostics.recordText(
                 getApplicationContext(),
                 "memory-pressure",
