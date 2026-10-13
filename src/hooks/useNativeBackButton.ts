@@ -6,6 +6,13 @@ type NativeBackPlugin = {
         listener: () => void,
     ) => Promise<{ remove: () => Promise<void> }> | { remove: () => Promise<void> };
     exitApp: () => Promise<unknown>;
+    recordRuntimeDiagnostic?: (payload: {
+        source: string;
+        thread: string;
+        type: string;
+        message: string;
+        stack: string;
+    }) => Promise<unknown>;
 };
 
 const getPlugin = (): NativeBackPlugin | null => {
@@ -44,7 +51,24 @@ export const useNativeBackButton = (): void => {
                 cancelable: true,
             });
             const handled = !window.dispatchEvent(event) || event.defaultPrevented;
-            if (!handled) void plugin.exitApp().catch(() => undefined);
+            if (!handled) {
+                void plugin.recordRuntimeDiagnostic?.({
+                    source: 'activity-lifecycle',
+                    thread: 'webview',
+                    type: 'back-unhandled',
+                    message: 'No layer handled Escape; requesting app exit',
+                    stack: '',
+                }).catch(() => undefined);
+                void plugin.exitApp().catch(() => undefined);
+            } else {
+                void plugin.recordRuntimeDiagnostic?.({
+                    source: 'activity-lifecycle',
+                    thread: 'webview',
+                    type: 'back-handled',
+                    message: 'A layer handled Escape',
+                    stack: '',
+                }).catch(() => undefined);
+            }
         });
 
         Promise.resolve(registered)

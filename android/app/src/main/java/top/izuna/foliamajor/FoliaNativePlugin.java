@@ -109,9 +109,29 @@ public class FoliaNativePlugin extends Plugin {
     /** True when the WebView handled Back; false lets the activity fall back to normal exit. */
     static boolean emitBackPressed() {
         FoliaNativePlugin plugin = instance;
-        if (plugin == null || !plugin.hasListeners("backButton")) return false;
+        if (plugin == null || !plugin.hasListeners("backButton")) {
+            if (plugin != null) {
+                CrashDiagnostics.recordText(
+                    plugin.getContext(),
+                    "back-press",
+                    "main",
+                    "native-fallback",
+                    "No JS backButton listener; activity will finish",
+                    "FoliaNativePlugin.emitBackPressed"
+                );
+            }
+            return false;
+        }
         Activity activity = plugin.getActivity();
         if (activity == null) return false;
+        CrashDiagnostics.recordText(
+            plugin.getContext(),
+            "back-press",
+            "main",
+            "native-emit",
+            "Forwarding Back to the WebView listener",
+            "FoliaNativePlugin.emitBackPressed"
+        );
         JSObject payload = new JSObject();
         activity.runOnUiThread(() -> plugin.notifyListeners("backButton", payload));
         return true;
@@ -489,7 +509,17 @@ public class FoliaNativePlugin extends Plugin {
     public void exitApp(PluginCall call) {
         Activity activity = getActivity();
         call.resolve();
-        if (activity != null) activity.runOnUiThread(activity::finish);
+        if (activity != null) {
+            CrashDiagnostics.recordText(
+                getContext(),
+                "app-exit",
+                "main",
+                "js-exit-app",
+                "JS back handler requested exit",
+                "FoliaNativePlugin.exitApp"
+            );
+            activity.runOnUiThread(activity::finish);
+        }
     }
 
     @PluginMethod
