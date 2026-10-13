@@ -12,6 +12,11 @@ import { getCollectionOrderDiagnosticLines } from './collectionOrderDiagnostics'
 import { getLyricsDiagnosticLines } from './lyricsDiagnostics';
 import { getLocalLibraryDiagnosticLines } from './localLibraryDiagnostics';
 import { collectWebGL2Diagnostics, formatWebGL2DiagnosticsLine } from './webglDiagnostics';
+import { BUILTIN_VISUALIZER_BACKGROUND_MODES } from '../types/visualizerModes';
+import {
+    VISUALIZER_BACKGROUND_REGISTRY,
+    hasVisualizerBackgroundMode,
+} from '../components/visualizer/backgrounds/registry';
 
 // src/utils/buildDiagnosticReport.ts
 // 设置 → 帮助 → 复制诊断数据。给用户原样贴进 issue 用，所以字段固定为英文并包在代码块里。
@@ -35,6 +40,25 @@ const readLocalStorageValue = (key: string): string => {
     } catch {
         return 'unavailable';
     }
+};
+
+/**
+ * 背景选项列表只有一个来源：背景 registry。这里同时导出「声明的内置列表」和「运行时实际列表」，
+ * 用来区分旧版本没有 nomand、mod 把条目删掉、以及注册表加载失败三种情况。
+ */
+const readVisualizerBackgroundLines = (): string[] => {
+    const declared: string[] = [...BUILTIN_VISUALIZER_BACKGROUND_MODES];
+    const live = VISUALIZER_BACKGROUND_REGISTRY.map(entry => String(entry.mode));
+    const missing = declared.filter(mode => !live.includes(mode));
+    const extra = live.filter(mode => !declared.includes(mode));
+    return [
+        `  declared builtins: ${declared.join(', ') || '(none)'}`,
+        `  live registry: ${live.join(', ') || '(empty)'}`,
+        `  nomand present: ${hasVisualizerBackgroundMode('nomand') ? 'yes' : 'no'}`,
+        `  missing builtins: ${missing.length ? missing.join(', ') : '(none)'}`,
+        `  extra/mod modes: ${extra.length ? extra.join(', ') : '(none)'}`,
+        `  stored mode: ${readLocalStorageValue('visualizer_background_mode')}`,
+    ];
 };
 
 const formatSeconds = (value: number | null): string => (
@@ -502,6 +526,9 @@ export const buildDiagnosticReport = async (): Promise<string> => {
         // 漫游背景 / 部分可视化依赖 WebGL2：把真实能力写进报告，避免只能让用户在浏览器另测。
         'graphics capability:',
         formatWebGL2DiagnosticsLine(collectWebGL2Diagnostics()),
+        '',
+        'visualizer backgrounds:',
+        ...readVisualizerBackgroundLines(),
         '',
         // 卡顿分流：帧耗时 + 长任务 + 处理器探针，用来区分我们的渲染开销和设备性能。
         'frame timing:',
