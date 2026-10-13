@@ -3,8 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // test/unit/onlineMusic/bodianProvider.test.ts
 
 const request = vi.hoisted(() => vi.fn());
+const traceLines = vi.hoisted(() => vi.fn());
 vi.mock('@/services/onlineMusic/bodianTransport', () => ({
     requestBodian: request, getBodianTransportAvailability: () => ({ configured: true }),
+}));
+vi.mock('@/nativeBridge/api/qrLoginTrace.js', () => ({
+    getQrLoginTraceLines: traceLines,
 }));
 import { bodianProvider } from '@/services/onlineMusic/bodianProvider';
 import { bodianPage, normalizeBodianCollection, normalizeBodianSong, normalizeBodianUser } from '@/services/onlineMusic/bodianNormalize';
@@ -14,9 +18,20 @@ const track = { id: 228908, songName: '测试歌曲 (Live)', name: '测试歌曲
     albumPic: 'https://img4.kuwo.cn/cover.jpg', artist: '测试歌手', artistId: 336,
     artists: [{ id: 336, name: '测试歌手' }], duration: 269 };
 
-beforeEach(() => request.mockReset());
+beforeEach(() => {
+    request.mockReset();
+    traceLines.mockReset();
+});
 
 describe('Bodian provider', () => {
+    it('exposes the bridge QR trace in login diagnostics', async () => {
+        traceLines.mockReturnValue(['bodian step +    0ms bod:qr:key:start attempt=1']);
+        await expect(bodianProvider.auth!.getQrLoginDiagnostics!()).resolves.toEqual([
+            'bodian step +    0ms bod:qr:key:start attempt=1',
+        ]);
+        expect(traceLines).toHaveBeenCalledWith('bodian');
+    });
+
     it.each([
         ['http://img1.kuwo.cn/cover.jpg', 'https://img1.kuwo.cn/cover.jpg'],
         ['http://img4.kuwo.cn/cover.jpg', 'https://img4.kuwo.cn/cover.jpg'],

@@ -1,6 +1,7 @@
 import CryptoJS from '../vendor/crypto-es.mjs';
 import { noteLibraryStep } from './libraryTrace.js';
 import { buildQrDataUrl } from './qrImage.js';
+import { noteQrLoginStep, resetQrLoginTrace } from './qrLoginTrace.js';
 
 // Browser/Android adaptation of bodian-music-api@0.1.2. The desktop package uses node:https,
 // node:crypto and node:zlib; this implementation uses WebView fetch, crypto-es and browser
@@ -10,6 +11,11 @@ const API_ORIGIN = 'https://bd-api.kuwo.cn';
 const LYRIC_ORIGIN = 'https://mlyric.kuwo.cn';
 const STORAGE_KEY = 'bodianSessionV1';
 const QR_TTL_MS = 5 * 60 * 1000;
+// Android 的原生桥默认 15 秒；波点取码节点偶发握手慢，单独放宽并重试一次。
+const BODIAN_QR_KEY_TIMEOUT_MS = 20000;
+const BODIAN_QR_KEY_ATTEMPTS = 2;
+const BODIAN_QR_RETRY_DELAY_MS = 500;
+const BODIAN_QR_STATUS_TIMEOUT_MS = 30000;
 
 const md5 = value => CryptoJS.MD5(String(value || '')).toString();
 
@@ -132,6 +138,7 @@ const createClient = (deviceId) => ({
       signed = false,
       anonymous = false,
       lyric = false,
+      timeoutMs = 0,
     } = options;
     if (!String(path).startsWith('/') || String(path).includes('..')) {
       throw new BodianError('unsupported', 'Invalid Bodian path');
@@ -157,6 +164,7 @@ const createClient = (deviceId) => ({
       headers,
       ...(bodyText ? { body: bodyText } : {}),
       redirect: 'follow',
+      ...(Number(timeoutMs) > 0 ? { foliaTimeoutMs: Number(timeoutMs) } : {}),
     });
     let payload = null;
     try { payload = await readResponsePayload(response); } catch (error) {
@@ -506,12 +514,39 @@ const createAuthOperations = (client) => {
     async login_qr_key() {
       for (const key of qrSessions.keys()) currentQr(key);
       if (qrSessions.size >= 5) throw new BodianError('unavailable', 'Too many pending Bodian logins');
-      const { data } = await client.call('/api/ucenter/login/qrCode', { anonymous: true, signed: true });
-      if (typeof data?.qrCode !== 'string' || !data.qrCode) {
-        throw new BodianError('invalid-response', 'Bodian QR key is missing');
+      resetQrLoginTrace();
+      let lastError = null;
+      for (let attempt = 1; attempt <= BODIAN_QR_KEY_ATTEMPTS; attempt += 1) {
+        const startedAt = Date.now();
+        noteQrLoginStep('bod:qr:key:start', { attempt });
+        try {
+          const { data } = await client.call('/api/ucenter/login/qrCode', {
+            anonymous: true,
+            signed: true,
+            timeoutMs: BODIAN_QR_KEY_TIMEOUT_MS,
+          });
+          if (typeof data?.qrCode !== 'string' || !data.qrCode) {
+            throw new BodianError('invalid-response', 'Bodian QR key is missing');
+          }
+          qrSessions.set(data.qrCode, { expiresAt: Date.now() + QR_TTL_MS, revision: sessionState.revision });
+          noteQrLoginStep('bod:qr:key:ok', { attempt, ms: Date.now() - startedAt });
+          return { key: data.qrCode };
+        } catch (error) {
+          lastError = error;
+          noteQrLoginStep('bod:qr:key:error', {
+            attempt,
+            ms: Date.now() - startedAt,
+            message: error instanceof Error ? error.message : String(error),
+          });
+          if (attempt < BODIAN_QR_KEY_ATTEMPTS) {
+            await new Promise(resolve => setTimeout(resolve, BODIAN_QR_RETRY_DELAY_MS));
+          }
+        }
       }
-      qrSessions.set(data.qrCode, { expiresAt: Date.now() + QR_TTL_MS, revision: sessionState.revision });
-      return { key: data.qrCode };
+      noteQrLoginStep('bod:qr:key:failed', {
+        message: lastError instanceof Error ? lastError.message : String(lastError),
+      });
+      throw lastError;
     },
     async login_qr_create({ key }) {
       if (!currentQr(key)) throw new BodianError('unavailable', 'Bodian QR code expired');
@@ -533,6 +568,7 @@ const createAuthOperations = (client) => {
         params: { qrCode: key },
         anonymous: true,
         signed: true,
+        timeoutMs: BODIAN_QR_STATUS_TIMEOUT_MS,
       });
       if (currentQr(key) !== qr || sessionState.revision !== qr.revision) return { state: 'expired' };
       if (Number(data?.status) === 1) return { state: 'waiting' };
@@ -642,11 +678,13 @@ export async function handleBodianRequest(operation, params = {}) {
     if (error instanceof BodianError && error.code === 'auth-required' && sessionState.revision === revision) {
       clearSession();
     }
+    const errorText = error instanceof Error ? error.message : String(error || '');
+    const timedOut = /timed out|timeout|abort|failed to fetch|network/i.test(errorText);
     const result = {
       ok: false,
       error: {
-        code: error instanceof BodianError ? error.code : 'invalid-response',
-        message: error instanceof BodianError ? error.message : 'Bodian operation failed',
+        code: error instanceof BodianError ? error.code : (timedOut ? 'network' : 'invalid-response'),
+        message: error instanceof BodianError ? error.message : (errorText || 'Bodian operation failed'),
       },
     };
     noteLibraryStep('bodian', 'bridge:result', {

@@ -9,6 +9,7 @@ import { bodianLibrary, clearBodianLibraryCache } from './bodianLibrary';
 import { bodianMutations } from './bodianMutations';
 import { proxyNativeRemoteAudioUrl } from '../nativeRemoteAudio';
 import type { BodianLyricsPayload } from 'bodian-music-api';
+import { getQrLoginTraceLines } from '../../nativeBridge/api/qrLoginTrace.js';
 
 // src/services/onlineMusic/bodianProvider.ts
 
@@ -102,6 +103,9 @@ export const bodianProvider: OnlineMusicProvider = {
         checkQr: key => requestBodian<QrLoginState>('login_qr_check', { key }),
         async cancelQr(key) { await requestBodian('login_qr_cancel', { key }); },
         getQrTtlMs: () => 5 * 60 * 1000,
+        async getQrLoginDiagnostics() {
+            return getQrLoginTraceLines('bodian');
+        },
     },
     catalog: bodianCatalog,
     library: bodianLibrary,
