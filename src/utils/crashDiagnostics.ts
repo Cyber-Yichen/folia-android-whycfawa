@@ -125,6 +125,17 @@ export const readCrashDiagnostics = async (): Promise<CrashDiagnosticEntry[]> =>
     return readLocal().slice(-MAX_LOCAL_RECORDS);
 };
 
+export const readLastPlaybackHeartbeat = async (): Promise<string | null> => {
+    const plugin = getNativePlugin();
+    if (!plugin?.getCrashDiagnostics) return null;
+    try {
+        const result = await plugin.getCrashDiagnostics();
+        return typeof result?.heartbeat === 'string' && result.heartbeat ? result.heartbeat : null;
+    } catch {
+        return null;
+    }
+};
+
 export const clearCrashDiagnostics = async (): Promise<void> => {
     try { localStorage.removeItem(STORAGE_KEY); } catch {}
     const plugin = getNativePlugin();

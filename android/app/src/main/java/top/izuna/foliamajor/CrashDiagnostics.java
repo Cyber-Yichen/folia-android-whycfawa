@@ -30,6 +30,7 @@ import java.util.TimeZone;
 public final class CrashDiagnostics {
     private static final String PREFS = "folia_crash_diagnostics";
     private static final String KEY_HISTORY = "history";
+    private static final String KEY_LAST_HEARTBEAT = "last_heartbeat";
     private static final String KEY_LAST_EXIT_TIMESTAMP = "last_exit_timestamp";
     private static final int MAX_RECORDS = 20;
     private static final int MAX_STACK_CHARS = 12_000;
@@ -140,6 +141,32 @@ public final class CrashDiagnostics {
                 .remove(KEY_HISTORY)
                 .apply();
         } catch (Exception ignored) {}
+    }
+
+    /**
+     * Last playback heartbeat. Written with apply(), not commit(): this one runs every 10 seconds
+     * and is only a breadcrumb, so it must never block the UI or audio path.
+     */
+    public static void recordHeartbeat(Context context, String payload) {
+        if (context == null) return;
+        try {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putString(KEY_LAST_HEARTBEAT, limit(payload, 2_000))
+                .apply();
+        } catch (Exception ignored) {
+            // A lost heartbeat is harmless; the next one is 10 seconds away.
+        }
+    }
+
+    public static String readHeartbeat(Context context) {
+        if (context == null) return "";
+        try {
+            return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_LAST_HEARTBEAT, "");
+        } catch (Exception ignored) {
+            return "";
+        }
     }
 
     /**

@@ -2,7 +2,7 @@ import { getLibraryTraceLines } from '../nativeBridge/api/libraryTrace.js';
 import { getQrLoginTraceLines } from '../nativeBridge/api/qrLoginTrace.js';
 import { useAudioSettingsStore } from '../stores/useAudioSettingsStore';
 import { usePlaybackStore } from '../stores/usePlaybackStore';
-import { readCrashDiagnostics } from './crashDiagnostics';
+import { readCrashDiagnostics, readLastPlaybackHeartbeat } from './crashDiagnostics';
 import { readPlaybackContinuitySnapshot } from './mediaDiagnostics';
 import { readFrameTimingSnapshot, runCpuProbe } from './frameTimingDiagnostics';
 import { readLastAiThemeAttempt, readAiThemeAttempts, readFailedAiThemeAttempts } from './aiThemeDiagnostics';
@@ -39,6 +39,23 @@ const readLocalStorageValue = (key: string): string => {
         return value == null || value === '' ? '(default)' : value;
     } catch {
         return 'unavailable';
+    }
+};
+
+const formatPlaybackHeartbeat = (raw: string | null): string => {
+    if (!raw) return '(none)';
+    try {
+        const value = JSON.parse(raw) as Record<string, unknown>;
+        const at = typeof value.at === 'number' ? new Date(value.at).toISOString() : 'unknown';
+        return `at=${at}`
+            + ` visualizer=${value.visualizer ?? 'unknown'}`
+            + ` background=${value.background ?? 'unknown'}`
+            + ` playing=${value.playing === true}`
+            + ` visibility=${value.visibility ?? 'unknown'}`
+            + ` foreground=${value.foreground === true}`
+            + ` screenOn=${value.screenOn === true}`;
+    } catch {
+        return raw;
     }
 };
 
@@ -492,6 +509,7 @@ const formatAiThemeAttempt = (entry: {
 
 export const buildDiagnosticReport = async (): Promise<string> => {
     const appVersion = typeof __APP_VERSION__ === 'undefined' ? 'unknown' : __APP_VERSION__;
+    const playbackHeartbeat = await readLastPlaybackHeartbeat();
     const capacitor = (window as unknown as { Capacitor?: { getPlatform?: () => string; isNativePlatform?: () => boolean } }).Capacitor;
     const lines: string[] = [
         '### Folia diagnostics',
@@ -522,6 +540,9 @@ export const buildDiagnosticReport = async (): Promise<string> => {
         '',
         'playback continuity:',
         ...readPlaybackContinuityLines(),
+        '',
+        'playback heartbeat:',
+        `  last: ${formatPlaybackHeartbeat(playbackHeartbeat)}`,
         '',
         // 漫游背景 / 部分可视化依赖 WebGL2：把真实能力写进报告，避免只能让用户在浏览器另测。
         'graphics capability:',

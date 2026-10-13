@@ -4,9 +4,11 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.ClipData;
 import android.content.ContentResolver;
+import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
 import android.os.Build;
+import android.os.PowerManager;
 import android.provider.DocumentsContract;
 import android.provider.OpenableColumns;
 import android.provider.MediaStore;
@@ -885,7 +887,32 @@ public class FoliaNativePlugin extends Plugin {
         CrashDiagnostics.collectHistoricalExits(getContext());
         JSObject result = new JSObject();
         result.put("history", CrashDiagnostics.read(getContext()));
+        result.put("heartbeat", CrashDiagnostics.readHeartbeat(getContext()));
         call.resolve(result);
+    }
+
+    /** Small 10-second breadcrumb: what was on screen and playing before an abrupt process death. */
+    @PluginMethod
+    public void recordPlaybackHeartbeat(PluginCall call) {
+        try {
+            JSObject payload = new JSObject();
+            payload.put("at", System.currentTimeMillis());
+            payload.put("visualizer", call.getString("visualizer", "unknown"));
+            payload.put("background", call.getString("background", "unknown"));
+            payload.put("playing", call.getBoolean("playing", false));
+            payload.put("visibility", call.getString("visibility", "unknown"));
+            Activity activity = getActivity();
+            payload.put(
+                "foreground",
+                activity != null && !activity.isFinishing() && activity.hasWindowFocus()
+            );
+            PowerManager powerManager = (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
+            payload.put("screenOn", powerManager != null && powerManager.isInteractive());
+            CrashDiagnostics.recordHeartbeat(getContext(), payload.toString());
+            call.resolve();
+        } catch (Exception error) {
+            call.reject("Failed to record playback heartbeat", error);
+        }
     }
 
     /** Clears only the crash trail; normal app data and sessions are untouched. */
