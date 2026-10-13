@@ -20,6 +20,7 @@ import android.util.Base64;
 
 import androidx.activity.result.ActivityResult;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 
 import com.getcapacitor.PermissionState;
 import com.getcapacitor.JSArray;
@@ -520,6 +521,61 @@ public class FoliaNativePlugin extends Plugin {
             );
             activity.runOnUiThread(activity::finish);
         }
+    }
+
+    /**
+     * 「导出诊断数据」：把报告写进缓存目录的 txt，再用 FileProvider 拉起系统分享面板。
+     *
+     * 报告正文由 WebView 侧生成后原样传入，这里只负责落盘和分享。文件名做白名单清洗，
+     * 避免调用方传来的名字带路径分隔符或被 `..` 穿越到缓存目录之外。
+     */
+    @PluginMethod
+    public void shareTextFile(PluginCall call) {
+        String rawName = call.getString("filename", "folia-diagnostics.txt");
+        String content = call.getString("content", "");
+        String title = call.getString("title", "Folia diagnostics");
+        Activity activity = getActivity();
+        if (activity == null) {
+            call.reject("Activity is not available");
+            return;
+        }
+        try {
+            File directory = new File(getContext().getCacheDir(), "diagnostics");
+            if (!directory.exists() && !directory.mkdirs()) {
+                call.reject("Could not create diagnostics directory");
+                return;
+            }
+            File target = new File(directory, sanitizeDiagnosticFileName(rawName));
+            try (FileOutputStream output = new FileOutputStream(target)) {
+                output.write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+            Uri uri = FileProvider.getUriForFile(
+                getContext(),
+                getContext().getPackageName() + ".fileprovider",
+                target
+            );
+            Intent send = new Intent(Intent.ACTION_SEND);
+            send.setType("text/plain");
+            send.putExtra(Intent.EXTRA_STREAM, uri);
+            send.putExtra(Intent.EXTRA_SUBJECT, title);
+            send.setClipData(ClipData.newUri(getContext().getContentResolver(), target.getName(), uri));
+            send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            Intent chooser = Intent.createChooser(send, title);
+            chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            activity.startActivity(chooser);
+            call.resolve();
+        } catch (Exception error) {
+            call.reject("Could not share diagnostics: " + error.getMessage(), error);
+        }
+    }
+
+    /** 只保留文件名，挡掉路径分隔符和 `..`，并保证以 .txt 结尾。 */
+    private static String sanitizeDiagnosticFileName(String rawName) {
+        String name = rawName == null ? "" : rawName.trim();
+        name = name.replace('/', '_').replace('\\', '_');
+        if (name.isEmpty() || name.contains("..")) name = "folia-diagnostics.txt";
+        if (!name.toLowerCase(Locale.ROOT).endsWith(".txt")) name = name + ".txt";
+        return name;
     }
 
     @PluginMethod

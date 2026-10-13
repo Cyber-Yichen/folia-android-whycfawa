@@ -20,7 +20,7 @@ const ProbeBody: React.FC = () => {
             <SettingsHelpActions
                 onOpenReleaseNotes={() => setShowReleaseNotes(true)}
                 onOpenPonder={openPonderNavigation}
-                onCopyDiagnostics={async () => 'probe diagnostics'}
+                buildDiagnostics={async () => 'probe diagnostics'}
             />
             <ReleaseNotesDialog
                 isOpen={showReleaseNotes}

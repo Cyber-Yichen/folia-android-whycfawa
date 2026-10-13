@@ -1,29 +1,32 @@
 import React, { useState } from 'react';
-import { Check, ClipboardCopy, Lightbulb, Loader2, Sparkles } from 'lucide-react';
+import { Check, ClipboardCopy, FileDown, Lightbulb, Loader2, Sparkles } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { exportDiagnosticReport } from '../../services/exportDiagnosticReport';
 
 // src/components/modal/SettingsHelpActions.tsx
 
 type SettingsHelpActionsProps = {
     onOpenReleaseNotes: () => void;
     onOpenPonder: () => void;
-    onCopyDiagnostics: () => Promise<string>;
+    buildDiagnostics: () => Promise<string>;
 };
 
 type CopyState = 'idle' | 'working' | 'copied' | 'failed';
+type ExportState = 'idle' | 'working' | 'shared' | 'downloaded' | 'failed';
 
 const SettingsHelpActions: React.FC<SettingsHelpActionsProps> = ({
     onOpenReleaseNotes,
     onOpenPonder,
-    onCopyDiagnostics,
+    buildDiagnostics,
 }) => {
     const { t } = useTranslation();
     const [copyState, setCopyState] = useState<CopyState>('idle');
+    const [exportState, setExportState] = useState<ExportState>('idle');
 
     const handleCopyDiagnostics = async () => {
         setCopyState('working');
         try {
-            const report = await onCopyDiagnostics();
+            const report = await buildDiagnostics();
             await navigator.clipboard.writeText(report);
             setCopyState('copied');
         } catch (error) {
@@ -32,7 +35,25 @@ const SettingsHelpActions: React.FC<SettingsHelpActionsProps> = ({
         }
     };
 
+    const handleExportDiagnostics = async () => {
+        setExportState('working');
+        try {
+            const report = await buildDiagnostics();
+            const result = await exportDiagnosticReport(report, t('help.exportDiagnostics'));
+            // 用户在系统面板里取消不算失败，回到空闲状态即可。
+            setExportState(result === 'cancelled' ? 'idle' : result);
+        } catch (error) {
+            console.warn('[Settings] diagnostics:export-failed', error);
+            setExportState('failed');
+        }
+    };
+
     const CopyIcon = copyState === 'working' ? Loader2 : copyState === 'copied' ? Check : ClipboardCopy;
+    const ExportIcon = exportState === 'working'
+        ? Loader2
+        : exportState === 'shared' || exportState === 'downloaded'
+            ? Check
+            : FileDown;
 
     return (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -84,6 +105,32 @@ const SettingsHelpActions: React.FC<SettingsHelpActionsProps> = ({
                                 : t('help.copyDiagnostics')}
                     </span>
                     <span className="mt-0.5 block text-xs opacity-55">{t('help.copyDiagnosticsDescription')}</span>
+                </span>
+            </button>
+            <button
+                type="button"
+                data-testid="help-export-diagnostics"
+                onClick={() => void handleExportDiagnostics()}
+                disabled={exportState === 'working'}
+                className="flex items-center gap-3 rounded-2xl bg-white/5 p-4 text-left transition-colors hover:bg-white/10 disabled:opacity-50 disabled:cursor-default sm:col-span-2"
+                style={{ color: 'var(--text-primary)' }}
+            >
+                <ExportIcon
+                    size={19}
+                    className={`shrink-0 opacity-75 ${exportState === 'working' ? 'animate-spin' : ''}`}
+                    aria-hidden="true"
+                />
+                <span>
+                    <span className="block text-sm font-semibold">
+                        {exportState === 'shared'
+                            ? t('help.exportDiagnosticsShared')
+                            : exportState === 'downloaded'
+                                ? t('help.exportDiagnosticsDownloaded')
+                                : exportState === 'failed'
+                                    ? t('help.exportDiagnosticsFailed')
+                                    : t('help.exportDiagnostics')}
+                    </span>
+                    <span className="mt-0.5 block text-xs opacity-55">{t('help.exportDiagnosticsDescription')}</span>
                 </span>
             </button>
         </div>

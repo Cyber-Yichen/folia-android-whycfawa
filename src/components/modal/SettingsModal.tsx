@@ -1443,7 +1443,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                                 <SettingsHelpActions
                                     onOpenReleaseNotes={() => setShowReleaseNotes(true)}
                                     onOpenPonder={openPonderNavigation}
-                                    onCopyDiagnostics={buildDiagnosticReport}
+                                    buildDiagnostics={buildDiagnosticReport}
                                 />
 
                                 {/* Navigation - REMOVED requested items */}
