@@ -49,6 +49,7 @@ export const SETTINGS_ANCHOR_DEFINITIONS = {
     discordRichPresence: { section: 'integration', labelKey: 'options.discordRichPresence', electronOnly: true },
     obsBrowserSource: { section: 'integration', labelKey: 'options.obsBrowserSource', electronOnly: true },
     lyricApi: { section: 'integration', labelKey: 'options.lyricApi', electronOnly: true },
+    colorOsLyrics: { section: 'integration', labelKey: 'options.colorOsLyrics' },
     stageMode: { section: 'integration', labelKey: 'options.stageMode' },
     navidrome: { section: 'integration', labelKey: 'navidrome.settings' },
 

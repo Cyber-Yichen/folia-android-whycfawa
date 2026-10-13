@@ -33,9 +33,12 @@ import okhttp3.ResponseBody;
 
 import org.json.JSONObject;
 
+import top.izuna.foliamajor.coloros.ColorOsLyricBridge;
+
 public class FoliaPlaybackService extends Service {
     private static final String CHANNEL_ID = "folia_playback";
     private static final int NOTIFICATION_ID = 31009;
+    public static final String ACTION_REFRESH_METADATA = "top.izuna.foliamajor.action.REFRESH_METADATA";
     private MediaSession mediaSession;
     private final ExecutorService artworkExecutor = Executors.newSingleThreadExecutor();
     private final OkHttpClient artworkClient = new OkHttpClient();
@@ -45,6 +48,15 @@ public class FoliaPlaybackService extends Service {
     private volatile String appliedArtworkUrl = "";
     private volatile Bitmap appliedArtworkBitmap = null;
     private volatile String lastRequestedCoverUrl = "";
+    private volatile String cachedTitle = "";
+    private volatile String cachedArtist = "";
+    private volatile String cachedAlbum = "";
+    private volatile String cachedCoverUrl = "";
+    private volatile String cachedSongKey = "";
+    private volatile long cachedDurationMs = 0L;
+    private volatile long cachedPositionMs = 0L;
+    private volatile boolean cachedPlaying = false;
+    private static volatile boolean running = false;
     private PowerManager.WakeLock wakeLock;
     private WifiManager.WifiLock wifiLock;
     private static volatile String powerDiagnostic = "inactive";
@@ -61,6 +73,7 @@ public class FoliaPlaybackService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        running = true;
         createNotificationChannel();
         mediaSession = new MediaSession(this, "FoliaPlayback");
         mediaSession.setCallback(new MediaSession.Callback() {
@@ -88,6 +101,11 @@ public class FoliaPlaybackService extends Service {
         mainHandler.post(serviceHeartbeatRunnable);
     }
 
+    /** ColorOS lyric bridge uses this to decide whether a metadata refresh intent is worth sending. */
+    public static boolean isRunning() {
+        return running;
+    }
+
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null || "clear".equals(intent.getAction())) {
@@ -95,17 +113,27 @@ public class FoliaPlaybackService extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
+        if (ACTION_REFRESH_METADATA.equals(intent.getAction())) {
+            applyCachedMetadata();
+            return START_STICKY;
+        }
 
-        String title = intent.getStringExtra("title");
-        String artist = intent.getStringExtra("artist");
-        String album = intent.getStringExtra("album");
-        String coverUrl = intent.getStringExtra("coverUrl");
-        boolean playing = intent.getBooleanExtra("playing", false);
-        lastPlaying = playing;
-        recordServiceLifecycle("service-start", "playing=" + playing);
-        long position = intent.getLongExtra("position", 0);
-        long duration = intent.getLongExtra("duration", 0);
-        currentArtworkUrl = coverUrl == null ? "" : coverUrl.trim();
+        cachedTitle = intent.getStringExtra("title");
+        cachedArtist = intent.getStringExtra("artist");
+        cachedAlbum = intent.getStringExtra("album");
+        cachedCoverUrl = intent.getStringExtra("coverUrl");
+        cachedSongKey = intent.getStringExtra("songKey");
+        cachedPlaying = intent.getBooleanExtra("playing", false);
+        cachedPositionMs = intent.getLongExtra("position", 0);
+        cachedDurationMs = intent.getLongExtra("duration", 0);
+        if (cachedTitle == null) cachedTitle = "";
+        if (cachedArtist == null) cachedArtist = "";
+        if (cachedAlbum == null) cachedAlbum = "";
+        if (cachedCoverUrl == null) cachedCoverUrl = "";
+        if (cachedSongKey == null) cachedSongKey = "";
+        lastPlaying = cachedPlaying;
+        recordServiceLifecycle("service-start", "playing=" + cachedPlaying);
+        currentArtworkUrl = cachedCoverUrl.trim();
         Bitmap retainedArtwork = appliedArtworkBitmap;
         if (currentArtworkUrl.isEmpty()) {
             appliedArtworkUrl = "";
@@ -121,30 +149,20 @@ public class FoliaPlaybackService extends Service {
             );
         }
 
-        mediaSession.setMetadata(buildMetadata(title, artist, album, duration, retainedArtwork, currentArtworkUrl));
+        applyCachedMetadata();
         FoliaNativePlugin.notePlaybackArtworkApplied(retainedArtwork != null);
-        mediaSession.setPlaybackState(new PlaybackState.Builder()
-            .setActions(
-                PlaybackState.ACTION_PLAY
-                    | PlaybackState.ACTION_PAUSE
-                    | PlaybackState.ACTION_PLAY_PAUSE
-                    | PlaybackState.ACTION_SKIP_TO_NEXT
-                    | PlaybackState.ACTION_SKIP_TO_PREVIOUS
-                    | PlaybackState.ACTION_SEEK_TO
-            )
-            .setState(playing ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED, position, playing ? 1f : 0f)
-            .build());
 
-        Notification notification = buildNotification(title, artist, playing, retainedArtwork);
+        Notification notification = buildNotification(cachedTitle, cachedArtist, cachedPlaying, retainedArtwork);
         startForeground(NOTIFICATION_ID, notification);
-        updatePlaybackLocks(playing);
-        loadArtwork(currentArtworkUrl, bitmap -> {
-            if (!currentArtworkUrl.equals(coverUrl == null ? "" : coverUrl.trim())) return;
-            mediaSession.setMetadata(buildMetadata(title, artist, album, duration, bitmap, currentArtworkUrl));
+        updatePlaybackLocks(cachedPlaying);
+        String requestedCover = currentArtworkUrl;
+        loadArtwork(requestedCover, bitmap -> {
+            if (!requestedCover.equals(currentArtworkUrl)) return;
+            mediaSession.setMetadata(buildMetadata(cachedTitle, cachedArtist, cachedAlbum, cachedDurationMs, bitmap, cachedCoverUrl, cachedSongKey));
             FoliaNativePlugin.notePlaybackArtworkApplied(bitmap != null);
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) {
-                manager.notify(NOTIFICATION_ID, buildNotification(title, artist, playing, bitmap));
+                manager.notify(NOTIFICATION_ID, buildNotification(cachedTitle, cachedArtist, cachedPlaying, bitmap));
             }
         });
         return START_STICKY;
@@ -169,7 +187,8 @@ public class FoliaPlaybackService extends Service {
         String album,
         long duration,
         Bitmap artwork,
-        String coverUrl
+        String coverUrl,
+        String songKey
     ) {
         MediaMetadata.Builder metadata = new MediaMetadata.Builder()
             .putString(MediaMetadata.METADATA_KEY_TITLE, title == null ? "Folia" : title)
@@ -184,7 +203,53 @@ public class FoliaPlaybackService extends Service {
             metadata.putBitmap(MediaMetadata.METADATA_KEY_ART, artwork);
             metadata.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, artwork);
         }
+        ColorOsLyricBridge.attach(metadata, songKey);
         return metadata.build();
+    }
+
+    private void applyCachedMetadata() {
+        if (mediaSession == null) return;
+        Bitmap retained = appliedArtworkBitmap;
+        mediaSession.setMetadata(buildMetadata(
+            cachedTitle,
+            cachedArtist,
+            cachedAlbum,
+            cachedDurationMs,
+            retained,
+            cachedCoverUrl,
+            cachedSongKey
+        ));
+        mediaSession.setPlaybackState(buildPlaybackState(cachedPlaying, cachedPositionMs, cachedSongKey));
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager != null && running) {
+            manager.notify(NOTIFICATION_ID, buildNotification(cachedTitle, cachedArtist, cachedPlaying, retained));
+        }
+    }
+
+    private PlaybackState buildPlaybackState(boolean playing, long position, String songKey) {
+        PlaybackState.Builder builder = new PlaybackState.Builder()
+            .setActions(
+                PlaybackState.ACTION_PLAY
+                    | PlaybackState.ACTION_PAUSE
+                    | PlaybackState.ACTION_PLAY_PAUSE
+                    | PlaybackState.ACTION_SKIP_TO_NEXT
+                    | PlaybackState.ACTION_SKIP_TO_PREVIOUS
+                    | PlaybackState.ACTION_SEEK_TO
+            )
+            .setState(playing ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED, position, playing ? 1f : 0f);
+        if (ColorOsLyricBridge.hasTranslationFor(songKey)) {
+            builder.addCustomAction(new PlaybackState.CustomAction.Builder(
+                ColorOsLyricBridge.ACTION_TOGGLE_TRANSLATION,
+                "翻译",
+                translationActionIcon()
+            ).build());
+        }
+        return builder.build();
+    }
+
+    private int translationActionIcon() {
+        int icon = getApplicationInfo().icon;
+        return icon != 0 ? icon : android.R.drawable.ic_menu_info_details;
     }
 
     private Notification buildNotification(
@@ -378,6 +443,7 @@ public class FoliaPlaybackService extends Service {
     @Override
     public void onDestroy() {
         recordServiceLifecycle("service-destroy", "Foreground playback service destroyed");
+        running = false;
         mainHandler.removeCallbacks(serviceHeartbeatRunnable);
         updatePlaybackLocks(false);
         artworkExecutor.shutdownNow();

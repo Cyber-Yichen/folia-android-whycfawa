@@ -18,6 +18,8 @@ import SettingsSectionHeading from './navigation/SettingsSectionHeading';
 import { setStatusMessage } from '../../../stores/useStatusMessageStore';
 import { useThemeSettingsStore } from '../../../stores/useThemeSettingsStore';
 import { useStageSettingsStore } from '../../../stores/useStageSettingsStore';
+import { isCapacitorAndroid } from '../../../platform/runtime';
+import { getColorOsLyricsSupport } from '../../../platform/foliaColorOsLyrics';
 
 // src/components/modal/settings/IntegrationSettingsSubview.tsx
 // Integration settings for Discord, Stage, Now Playing, OBS, and Navidrome.
@@ -165,6 +167,19 @@ const IntegrationSettingsSubview: React.FC<IntegrationSettingsSubviewProps> = ({
         status: discordPresenceStatus,
     } = discord;
     const { t } = useTranslation();
+    const isAndroid = isCapacitorAndroid();
+    const [colorOsSupport, setColorOsSupport] = useState<{ supported: boolean; colorOsMajor: number } | null>(null);
+    useEffect(() => {
+        if (!isAndroid) return undefined;
+        let cancelled = false;
+        void getColorOsLyricsSupport().then((result) => {
+            if (cancelled) return;
+            setColorOsSupport({ supported: result.supported, colorOsMajor: result.colorOsMajor });
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [isAndroid]);
     const getNowPlayingStatusLabel = (status: NowPlayingConnectionStatus) => {
         if (status === 'connected') return t('status.connected');
         if (status === 'connecting') return t('status.connecting');
@@ -561,6 +576,36 @@ const IntegrationSettingsSubview: React.FC<IntegrationSettingsSubviewProps> = ({
                                 {lyricApi.status.error && (
                                     <div className="text-[10px] text-red-400 break-all">{lyricApi.status.error}</div>
                                 )}
+                            </div>
+                        )}
+                    </div>
+                </SettingsAnchor>
+            )}
+
+            {isAndroid && (
+                <SettingsAnchor anchorId="colorOsLyrics" label={t('options.colorOsLyrics') || 'ColorOS lock-screen lyrics'}>
+                    <SettingsSectionHeading icon={Activity} label={t('options.colorOsLyrics') || 'ColorOS lock-screen lyrics'} />
+                    <div className={`p-4 rounded-xl border space-y-4 ${settingsCardClass}`}>
+                        <div className="space-y-1">
+                            <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                                {t('options.colorOsLyrics') || 'ColorOS lock-screen lyrics'}
+                            </div>
+                            <div className="text-[10px] opacity-40 max-w-[360px]" style={{ color: 'var(--text-secondary)' }}>
+                                {t('options.colorOsLyricsDesc') || 'Publish lyrics to the native lock-screen / AOD lyric page. Enabled only when ColorOS 16+ is detected.'}
+                            </div>
+                        </div>
+                        {colorOsSupport && (
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className={`px-2 py-1 rounded-full text-[10px] ${colorOsSupport.supported ? successBgColor : errorBgColor} ${colorOsSupport.supported ? successTextColor : errorTextColor}`}>
+                                    {colorOsSupport.supported
+                                        ? `${t('options.colorOsLyricsActive') || 'Active'} · ColorOS ${colorOsSupport.colorOsMajor}`
+                                        : t('options.colorOsLyricsInactive') || 'Inactive'}
+                                </span>
+                                <span className="text-[10px] opacity-60" style={{ color: 'var(--text-secondary)' }}>
+                                    {colorOsSupport.supported
+                                        ? t('options.colorOsLyricsActiveDesc') || 'Lyrics are published to the system MediaSession.'
+                                        : t('options.colorOsLyricsInactiveDesc') || 'This device was not detected as ColorOS 16+, so this channel stays off.'}
+                                </span>
                             </div>
                         )}
                     </div>

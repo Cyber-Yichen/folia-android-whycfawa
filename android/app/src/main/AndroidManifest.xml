@@ -17,6 +17,10 @@
         android:supportsRtl="true"
         android:usesCleartextTraffic="true"
         android:theme="@style/AppTheme">
+        <!-- ColorOS 原生锁屏歌词：声明本应用愿意进 OPlus 的媒体历史 / 媒体管线。 -->
+        <meta-data
+            android:name="io.github.andrealtb.lockscreenlyrics.OPLUS_MEDIA_HISTORY"
+            android:value="true" />
         <service
             android:name=".FoliaPlaybackService"
             android:exported="false"

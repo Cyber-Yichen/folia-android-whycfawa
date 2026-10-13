@@ -1,5 +1,6 @@
 import { PlayerState } from '../types';
 import { currentTime } from '../stores/motionSignals';
+import { getPlaybackSongKey } from '../utils/appPlaybackGuards';
 import {
   selectDisplayDuration,
   selectDisplayPlayerState,
@@ -33,6 +34,7 @@ const pushState = (plugin: NativePlaybackPlugin) => {
     artist: song.artists?.map((artist) => artist.name).filter(Boolean).join(' / ') || '',
     album: song.album?.name || '',
     coverUrl,
+    songKey: getPlaybackSongKey(song),
     playing,
     position: Math.max(0, Math.round(currentTime.get() * 1000)),
     duration: Math.max(0, Math.round(selectDisplayDuration(state) * 1000)),

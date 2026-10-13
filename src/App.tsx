@@ -87,6 +87,7 @@ import { useLocalLibraryAutoScan } from './hooks/useLocalLibraryAutoScan';
 import { useElectronVideoExportController } from './hooks/useElectronVideoExportController';
 import { useElectronWindowPlaybackHandoff } from './hooks/useElectronWindowPlaybackHandoff';
 import { useMediaSessionBridge } from './hooks/useMediaSessionBridge';
+import { useColorOsLyricFeed } from './hooks/useColorOsLyricFeed';
 import { usePlayerChromeAutoHide } from './hooks/usePlayerChromeAutoHide';
 import { usePlaybackAudioBridge } from './hooks/usePlaybackAudioBridge';
 import { useTranscodeFallback } from './hooks/useTranscodeFallback';
@@ -1461,6 +1462,14 @@ export default function App() {
         mediaSessionPrevRef,
         mediaSessionNextRef,
         isNowPlayingControlDisabledRef,
+    });
+
+    // Android + ColorOS 16+ only: publish the current lyric timeline into the system
+    // MediaSession metadata so the native lock-screen / AOD lyric page can render it.
+    useColorOsLyricFeed({
+        lyrics,
+        song: displaySong,
+        duration,
     });
 
     const {

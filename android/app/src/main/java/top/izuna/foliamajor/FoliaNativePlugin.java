@@ -824,6 +824,7 @@ public class FoliaNativePlugin extends Plugin {
         intent.putExtra("artist", call.getString("artist", ""));
         intent.putExtra("album", call.getString("album", ""));
         intent.putExtra("coverUrl", call.getString("coverUrl", ""));
+        intent.putExtra("songKey", call.getString("songKey", ""));
         intent.putExtra("playing", Boolean.TRUE.equals(call.getBoolean("playing", false)));
         Double position = call.getDouble("position");
         Double duration = call.getDouble("duration");
