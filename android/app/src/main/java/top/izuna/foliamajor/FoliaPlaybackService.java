@@ -17,6 +17,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
+import android.os.SystemClock;
 
 import androidx.annotation.Nullable;
 
@@ -61,7 +62,15 @@ public class FoliaPlaybackService extends Service {
     private WifiManager.WifiLock wifiLock;
     private static volatile String powerDiagnostic = "inactive";
     private static final long SERVICE_HEARTBEAT_INTERVAL_MS = 10_000L;
+    /**
+     * `service-start` 的重复记录间隔。前台服务每次收到播放状态推送都会走一遍 `onStartCommand`，
+     * 崩溃历史只留 20 条，不节流的话这些重复记录会把真正的退出原因挤掉。
+     */
+    private static final long SERVICE_START_RECORD_INTERVAL_MS = 5_000L;
     private volatile boolean lastPlaying = false;
+    private volatile long lastServiceStartRecordAt = 0L;
+    private volatile boolean lastServiceStartPlaying = false;
+    private volatile String lastServiceStartSongKey = "";
     private final Runnable serviceHeartbeatRunnable = new Runnable() {
         @Override
         public void run() {
@@ -132,7 +141,7 @@ public class FoliaPlaybackService extends Service {
         if (cachedCoverUrl == null) cachedCoverUrl = "";
         if (cachedSongKey == null) cachedSongKey = "";
         lastPlaying = cachedPlaying;
-        recordServiceLifecycle("service-start", "playing=" + cachedPlaying);
+        recordServiceStartIfNoteworthy();
         currentArtworkUrl = cachedCoverUrl.trim();
         Bitmap retainedArtwork = appliedArtworkBitmap;
         if (currentArtworkUrl.isEmpty()) {
@@ -149,7 +158,9 @@ public class FoliaPlaybackService extends Service {
             );
         }
 
-        applyCachedMetadata();
+        // The notification goes on right below via startForeground; building it twice here was
+        // one of the two writes per start command (the other is the lifecycle record).
+        applyCachedMetadata(false);
         FoliaNativePlugin.notePlaybackArtworkApplied(retainedArtwork != null);
 
         Notification notification = buildNotification(cachedTitle, cachedArtist, cachedPlaying, retainedArtwork);
@@ -208,6 +219,11 @@ public class FoliaPlaybackService extends Service {
     }
 
     private void applyCachedMetadata() {
+        applyCachedMetadata(true);
+    }
+
+    /** `notify=false`：紧接着就要 `startForeground` 的路径，不再重复构建一次通知。 */
+    private void applyCachedMetadata(boolean notify) {
         if (mediaSession == null) return;
         Bitmap retained = appliedArtworkBitmap;
         mediaSession.setMetadata(buildMetadata(
@@ -220,9 +236,11 @@ public class FoliaPlaybackService extends Service {
             cachedSongKey
         ));
         mediaSession.setPlaybackState(buildPlaybackState(cachedPlaying, cachedPositionMs, cachedSongKey));
-        NotificationManager manager = getSystemService(NotificationManager.class);
-        if (manager != null && running) {
-            manager.notify(NOTIFICATION_ID, buildNotification(cachedTitle, cachedArtist, cachedPlaying, retained));
+        if (notify) {
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            if (manager != null && running) {
+                manager.notify(NOTIFICATION_ID, buildNotification(cachedTitle, cachedArtist, cachedPlaying, retained));
+            }
         }
     }
 
@@ -424,6 +442,23 @@ public class FoliaPlaybackService extends Service {
             message,
             "FoliaPlaybackService"
         );
+    }
+
+    /**
+     * 只在播放状态或曲目真的变了、或距上次记录已满 {@link #SERVICE_START_RECORD_INTERVAL_MS}
+     * 时记一条 `service-start`。推送本身仍然每次都处理，只是不再每次都写诊断。
+     */
+    private void recordServiceStartIfNoteworthy() {
+        long now = SystemClock.elapsedRealtime();
+        boolean stateChanged = cachedPlaying != lastServiceStartPlaying
+            || !cachedSongKey.equals(lastServiceStartSongKey);
+        if (!stateChanged && now - lastServiceStartRecordAt < SERVICE_START_RECORD_INTERVAL_MS) {
+            return;
+        }
+        lastServiceStartRecordAt = now;
+        lastServiceStartPlaying = cachedPlaying;
+        lastServiceStartSongKey = cachedSongKey;
+        recordServiceLifecycle("service-start", "playing=" + cachedPlaying);
     }
 
     private void recordServiceHeartbeat() {
