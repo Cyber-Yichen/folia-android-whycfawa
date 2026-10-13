@@ -569,7 +569,7 @@ export const buildDiagnosticReport = async (): Promise<string> => {
     if (crashEntries.length === 0) {
         lines.push('  (none)');
     } else {
-        crashEntries.slice(-5).forEach((entry, index) => {
+        crashEntries.slice(-12).forEach((entry, index) => {
             lines.push(
                 `  [${index + 1}] at=${new Date(entry.at).toISOString()}`
                 + ` source=${entry.source}`

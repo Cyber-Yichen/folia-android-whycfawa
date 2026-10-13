@@ -1,5 +1,6 @@
 package top.izuna.foliamajor;
 
+import android.content.ComponentCallbacks2;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.SystemClock;
@@ -37,6 +38,14 @@ public class MainActivity extends BridgeActivity {
         clearWebViewCachesAfterAppUpdate();
         registerPlugin(FoliaNativePlugin.class);
         super.onCreate(savedInstanceState);
+        CrashDiagnostics.recordText(
+            getApplicationContext(),
+            "activity-lifecycle",
+            "main",
+            "create",
+            "restoredState=" + (savedInstanceState != null),
+            "onCreate"
+        );
         installWebViewRendererGuard();
         WebView webView = getBridge().getWebView();
         WebSettings settings = webView.getSettings();
@@ -48,6 +57,14 @@ public class MainActivity extends BridgeActivity {
                 // Let the WebView close its own settings/effects layer first; only a Back with
                 // nothing left to close exits the activity.
                 if (FoliaNativePlugin.emitBackPressed()) return;
+                CrashDiagnostics.recordText(
+                    getApplicationContext(),
+                    "activity-lifecycle",
+                    "main",
+                    "back-finish",
+                    "Back had no open layer; finishing activity",
+                    "OnBackPressedCallback"
+                );
                 finish();
             }
         });
@@ -164,6 +181,60 @@ public class MainActivity extends BridgeActivity {
             }
         }
         PhoneFitCutout.apply(this);
+    }
+
+    @Override
+    protected void onUserLeaveHint() {
+        CrashDiagnostics.recordText(
+            getApplicationContext(),
+            "activity-lifecycle",
+            "main",
+            "user-leave",
+            "Home or Recents pressed",
+            "onUserLeaveHint"
+        );
+        super.onUserLeaveHint();
+    }
+
+    @Override
+    public void onStop() {
+        CrashDiagnostics.recordText(
+            getApplicationContext(),
+            "activity-lifecycle",
+            "main",
+            "stop",
+            "isFinishing=" + isFinishing() + " changingConfigurations=" + isChangingConfigurations(),
+            "onStop"
+        );
+        super.onStop();
+    }
+
+    @Override
+    public void onDestroy() {
+        CrashDiagnostics.recordText(
+            getApplicationContext(),
+            "activity-lifecycle",
+            "main",
+            "destroy",
+            "isFinishing=" + isFinishing() + " changingConfigurations=" + isChangingConfigurations(),
+            "onDestroy"
+        );
+        super.onDestroy();
+    }
+
+    @Override
+    public void onTrimMemory(int level) {
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+            CrashDiagnostics.recordText(
+                getApplicationContext(),
+                "memory-pressure",
+                "main",
+                "trim-memory",
+                "level=" + level,
+                "onTrimMemory"
+            );
+        }
+        super.onTrimMemory(level);
     }
 
     @Override

@@ -31,7 +31,7 @@ public final class CrashDiagnostics {
     private static final String PREFS = "folia_crash_diagnostics";
     private static final String KEY_HISTORY = "history";
     private static final String KEY_LAST_EXIT_TIMESTAMP = "last_exit_timestamp";
-    private static final int MAX_RECORDS = 5;
+    private static final int MAX_RECORDS = 20;
     private static final int MAX_STACK_CHARS = 12_000;
     private static final long EXIT_LOOKBACK_MS = 7L * 24L * 60L * 60L * 1000L;
     private static final int EXIT_REASON_SIGNALED = 2;
@@ -41,7 +41,10 @@ public final class CrashDiagnostics {
     private static final int EXIT_REASON_ANR = 6;
     private static final int EXIT_REASON_INITIALIZATION_FAILURE = 7;
     private static final int EXIT_REASON_EXCESSIVE_RESOURCE_USAGE = 9;
+    private static final int EXIT_REASON_USER_REQUESTED = 10;
+    private static final int EXIT_REASON_USER_STOPPED = 11;
     private static final int EXIT_REASON_DEPENDENCY_DIED = 12;
+    private static final int EXIT_REASON_FREEZER = 14;
     private static volatile boolean installed = false;
 
     private CrashDiagnostics() {}
@@ -210,7 +213,10 @@ public final class CrashDiagnostics {
             || reason == EXIT_REASON_SIGNALED
             || reason == EXIT_REASON_EXCESSIVE_RESOURCE_USAGE
             || reason == EXIT_REASON_LOW_MEMORY
-            || reason == EXIT_REASON_DEPENDENCY_DIED) {
+            || reason == EXIT_REASON_DEPENDENCY_DIED
+            || reason == EXIT_REASON_USER_REQUESTED
+            || reason == EXIT_REASON_USER_STOPPED
+            || reason == EXIT_REASON_FREEZER) {
             return true;
         }
         return false;
@@ -224,7 +230,10 @@ public final class CrashDiagnostics {
         if (reason == EXIT_REASON_SIGNALED) return "SIGNALED";
         if (reason == EXIT_REASON_EXCESSIVE_RESOURCE_USAGE) return "EXCESSIVE_RESOURCE_USAGE";
         if (reason == EXIT_REASON_LOW_MEMORY) return "LOW_MEMORY";
+        if (reason == EXIT_REASON_USER_REQUESTED) return "USER_REQUESTED";
+        if (reason == EXIT_REASON_USER_STOPPED) return "USER_STOPPED";
         if (reason == EXIT_REASON_DEPENDENCY_DIED) return "DEPENDENCY_DIED";
+        if (reason == EXIT_REASON_FREEZER) return "FREEZER";
         return "OTHER";
     }
 
