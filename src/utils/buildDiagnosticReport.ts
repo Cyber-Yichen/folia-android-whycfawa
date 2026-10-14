@@ -11,6 +11,9 @@ import { isNeutralAudioEffects } from './audioEffects';
 import { getCollectionOrderDiagnosticLines } from './collectionOrderDiagnostics';
 import { getLyricsDiagnosticLines } from './lyricsDiagnostics';
 import { getLocalLibraryDiagnosticLines } from './localLibraryDiagnostics';
+import { getFromCache } from '../services/db';
+import { VIDEO_LAYER_FILE_BLOB_KEY } from '../services/videoLayerFile';
+import { useVideoLayerSettingsStore } from '../stores/useVideoLayerSettingsStore';
 import { collectWebGL2Diagnostics, formatWebGL2DiagnosticsLine } from './webglDiagnostics';
 import { BUILTIN_VISUALIZER_BACKGROUND_MODES } from '../types/visualizerModes';
 import {
@@ -522,6 +525,57 @@ const formatAiThemeAttempt = (entry: {
     + (entry.error ? ` error=${entry.error}` : '')
 );
 
+const formatByteSize = (value: number): string => {
+    if (!Number.isFinite(value) || value <= 0) return '0B';
+    if (value >= 1024 * 1024 * 1024) return `${(value / (1024 * 1024 * 1024)).toFixed(2)}GB`;
+    if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)}MB`;
+    if (value >= 1024) return `${(value / 1024).toFixed(1)}KB`;
+    return `${Math.round(value)}B`;
+};
+
+/**
+ * 视频层的本地视频在安卓上靠 IndexedDB 里的整份 Blob 持久化（桌面端存的是文件句柄）。
+ *
+ * 用户报「重启后视频没了」时，这几行能直接把范围分开：数据根本没写进去、写进去了但没被读回来、
+ * 还是读回来了却没播出来 —— 这三种的修法完全不同，不该靠猜。
+ */
+const readVideoLayerLines = async (): Promise<string[]> => {
+    const state = useVideoLayerSettingsStore.getState();
+    const lines: string[] = [
+        `  enabled: ${state.videoLayerEnabled} url: ${state.videoLayerUrl ? 'set' : '(none)'}`,
+        `  runtime: status=${state.localFileStatus}`
+            + ` name=${state.localFileStatus === 'none' ? '(none)' : (state.localFileName ?? '(unnamed)')}`,
+    ];
+
+    try {
+        const blob = await getFromCache<File>(VIDEO_LAYER_FILE_BLOB_KEY);
+        lines.push(
+            `  stored: blob=${blob ? 'yes' : 'no'}`
+            + (blob ? ` blob-size=${formatByteSize(blob.size ?? 0)} blob-name=${blob.name || '(unnamed)'}` : ''),
+        );
+    } catch (error) {
+        lines.push(`  stored: read-error ${error instanceof Error ? error.message : 'unknown'}`);
+    }
+
+    try {
+        const storage = (navigator as Navigator & { storage?: StorageManager }).storage;
+        const estimate = await storage?.estimate?.();
+        if (estimate) {
+            const persisted = typeof storage?.persisted === 'function' ? await storage.persisted() : false;
+            lines.push(
+                `  origin storage: persisted=${persisted ? 'yes' : 'no'}`
+                + ` usage=${formatByteSize(estimate.usage ?? 0)} quota=${formatByteSize(estimate.quota ?? 0)}`,
+            );
+        } else {
+            lines.push('  origin storage: (unavailable)');
+        }
+    } catch (error) {
+        lines.push(`  origin storage: error ${error instanceof Error ? error.message : 'unknown'}`);
+    }
+
+    return lines;
+};
+
 export const buildDiagnosticReport = async (): Promise<string> => {
     const appVersion = typeof __APP_VERSION__ === 'undefined' ? 'unknown' : __APP_VERSION__;
     const heartbeats = await readDiagnosticsHeartbeats();
@@ -544,6 +598,10 @@ export const buildDiagnosticReport = async (): Promise<string> => {
         `  qq session: ${readLocalStorageFlag('online_provider:qq:cookie')}`,
         `  netease session: ${readLocalStorageFlag('online_provider:netease:cookie')}`,
         `  kugou session: ${readLocalStorageFlag('online_provider:kugou:cookie')}`,
+        '',
+        // 视频层的本地视频重启后还在不在：写入 / 恢复 / 播放三段分开看。
+        'video layer:',
+        ...(await readVideoLayerLines()),
         '',
         // 底部控制条被误改到画面中间时，这两个值就是原因，所以一并导出。
         'ui settings:',
