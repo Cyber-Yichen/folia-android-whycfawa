@@ -11,8 +11,7 @@ import { isNeutralAudioEffects } from './audioEffects';
 import { getCollectionOrderDiagnosticLines } from './collectionOrderDiagnostics';
 import { getLyricsDiagnosticLines } from './lyricsDiagnostics';
 import { getLocalLibraryDiagnosticLines } from './localLibraryDiagnostics';
-import { getFromCache } from '../services/db';
-import { VIDEO_LAYER_FILE_BLOB_KEY } from '../services/videoLayerFile';
+import { loadVideoLayerFileBlob, readVideoLayerStoreFailure } from '../services/videoLayerFile';
 import { useVideoLayerSettingsStore } from '../stores/useVideoLayerSettingsStore';
 import { collectWebGL2Diagnostics, formatWebGL2DiagnosticsLine } from './webglDiagnostics';
 import { BUILTIN_VISUALIZER_BACKGROUND_MODES } from '../types/visualizerModes';
@@ -548,7 +547,7 @@ const readVideoLayerLines = async (): Promise<string[]> => {
     ];
 
     try {
-        const blob = await getFromCache<File>(VIDEO_LAYER_FILE_BLOB_KEY);
+        const blob = await loadVideoLayerFileBlob();
         lines.push(
             `  stored: blob=${blob ? 'yes' : 'no'}`
             + (blob ? ` blob-size=${formatByteSize(blob.size ?? 0)} blob-name=${blob.name || '(unnamed)'}` : ''),
@@ -556,6 +555,10 @@ const readVideoLayerLines = async (): Promise<string[]> => {
     } catch (error) {
         lines.push(`  stored: read-error ${error instanceof Error ? error.message : 'unknown'}`);
     }
+
+    // 写入失败时报告里只有一句 blob=no，看不出为什么 —— 上一次的异常在这里。
+    const storeFailure = readVideoLayerStoreFailure();
+    if (storeFailure) lines.push(`  last store failure: ${storeFailure}`);
 
     try {
         const storage = (navigator as Navigator & { storage?: StorageManager }).storage;

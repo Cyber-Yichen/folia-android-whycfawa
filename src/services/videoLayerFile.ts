@@ -17,6 +17,49 @@ const VIDEO_LAYER_FILE_HANDLE_KEY = 'video_layer_file_handle';
 export { VIDEO_LAYER_FILE_BLOB_KEY };
 
 /**
+ * 上一次写入失败的原因。写入失败时用户只会看到「重启后没了」，而 `console.warn` 在手机上没人
+ * 看得到，所以顺手留一份在 localStorage 里 —— 诊断报告里能直接读出来。
+ */
+const VIDEO_LAYER_STORE_ERROR_KEY = 'video_layer_store_error';
+
+/**
+ * 存下来的形状。
+ *
+ * 刻意不直接存 `File`：内容一样，但 File 的结构化克隆在个别 WebView 上会失败，而文件名和
+ * 类型本来就要单独带上，用不着靠 File 自带的元数据。
+ */
+export type StoredVideoLayerFile = {
+    blob: Blob;
+    name: string;
+    type: string;
+};
+
+export const readVideoLayerStoreFailure = (): string => {
+    try {
+        return localStorage.getItem(VIDEO_LAYER_STORE_ERROR_KEY) ?? '';
+    } catch {
+        return '';
+    }
+};
+
+const noteVideoLayerStoreFailure = (error: unknown): void => {
+    try {
+        const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+        localStorage.setItem(VIDEO_LAYER_STORE_ERROR_KEY, `${new Date().toISOString()} ${detail}`);
+    } catch {
+        // 记不下来也不能影响本来要做的事。
+    }
+};
+
+const clearVideoLayerStoreFailure = (): void => {
+    try {
+        localStorage.removeItem(VIDEO_LAYER_STORE_ERROR_KEY);
+    } catch {
+        // 同上。
+    }
+};
+
+/**
  * 本地视频的大小上限。
  *
  * 视频是整份存下来的（不像 handle 只存一个引用），所以它直接占 WebView 的 origin 配额 ——
@@ -102,15 +145,34 @@ export const clearVideoLayerFileHandle = () => removeFromCache(VIDEO_LAYER_FILE_
  */
 export const saveVideoLayerFileBlob = async (file: File): Promise<boolean> => {
     try {
-        await putCacheEntry(VIDEO_LAYER_FILE_BLOB_KEY, file);
+        const payload: StoredVideoLayerFile = {
+            blob: new Blob([file], { type: file.type }),
+            name: file.name,
+            type: file.type,
+        };
+        await putCacheEntry(VIDEO_LAYER_FILE_BLOB_KEY, payload);
+        clearVideoLayerStoreFailure();
         return true;
     } catch (error) {
+        noteVideoLayerStoreFailure(error);
         console.warn('[VideoLayer] Failed to store the picked video:', error);
         return false;
     }
 };
 
-export const loadVideoLayerFileBlob = (): Promise<File | null> => getFromCache<File>(VIDEO_LAYER_FILE_BLOB_KEY);
+export const loadVideoLayerFileBlob = async (): Promise<File | null> => {
+    const stored = await getFromCache<StoredVideoLayerFile | File>(VIDEO_LAYER_FILE_BLOB_KEY);
+    if (!stored) return null;
+    // 认旧格式：早期版本存的是 File 本体，不能让升级把用户已有的选取读没了。
+    if (typeof File !== 'undefined' && stored instanceof File) return stored;
+    const record = stored as StoredVideoLayerFile;
+    if (!record.blob) return null;
+    return new File(
+        [record.blob],
+        record.name || 'video',
+        { type: record.type || record.blob.type || 'video/mp4' },
+    );
+};
 
 export const clearVideoLayerFileBlob = () => removeFromCache(VIDEO_LAYER_FILE_BLOB_KEY);
 
