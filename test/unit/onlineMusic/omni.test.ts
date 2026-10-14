@@ -236,7 +236,7 @@ describe('omni routing', () => {
 
         await expect(omni.refreshProviderPlaylists(providerId)).resolves.toEqual([playlist]);
 
-        expect(getUserPlaylists).toHaveBeenCalledWith('user', 50, 0);
+        expect(getUserPlaylists).toHaveBeenCalledWith('user', 500, 0);
         expect(useOnlineProviderAccountStore.getState().accounts[providerId]?.collections).toEqual([
             playlist,
             { providerId, id: 'cloud', name: 'Cloud', type: 'cloud' },
@@ -312,7 +312,7 @@ describe('omni routing', () => {
         await omni.addSongToPlaylist(target, collection);
 
         expect(updateTracks).toHaveBeenCalledWith('add', collection, [target]);
-        expect(getUserPlaylists).toHaveBeenCalledWith('user', 50, 0);
+        expect(getUserPlaylists).toHaveBeenCalledWith('user', 500, 0);
     });
 
     it('rejects a playlist that its provider marks as non-mutable', async () => {

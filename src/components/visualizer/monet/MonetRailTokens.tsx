@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { motion, motionValue, useTransform, MotionValue } from 'framer-motion';
 import { type GraphemeTiming } from '../../../utils/lyrics/graphemeTiming';
 import { getLineRenderEndTime } from '../../../utils/lyrics/renderHints';
-import { colorWithAlpha, mixColors } from '../colorMix';
+import { mixColors } from '../colorMix';
 import { resolveMonetFillWidth, resolveMonetGlow } from './monetLyricMotion';
 import { buildWordColorRangesFromMatchers, resolveTokenColorMap, type WordColorMatcher } from '../wordColoring';
 import { buildMonetDisplayTokens, measureMonetGraphemeOffsets, resolveMonetSweepEdgeSoftness, resolveMonetSweepEnd, resolveMonetWordStatus, type MonetLineStatus } from './monetLyricsModel';
@@ -160,10 +160,12 @@ const MonetWordSweep: React.FC<{
             return `linear-gradient(90deg, rgba(0, 0, 0, 1) 0px, rgba(0, 0, 0, 1) ${solidEnd}px, rgba(0, 0, 0, 0.92) ${featherStart}px, rgba(0, 0, 0, 0) ${featherEnd}px, rgba(0, 0, 0, 0) 100%)`;
         });
 
-        const fillGradient = useTransform(wordProgress, progress => {
-            const color = mixColors(baseColor, wordColor, Math.min(progress, 1));
-            return `linear-gradient(90deg, ${color} 0%, ${colorWithAlpha(color, 0.92)} 68%, ${colorWithAlpha(color, 0.72)} 100%)`;
-        });
+        // 已演唱部分的颜色。原来这里把一段渐变用 `background-clip: text` 裁进字形，但部分安卓
+        // WebView 不认「透明字 + 背景裁剪」这个组合，会退化成把整块背景按字形方框画出来 ——
+        // 看上去就是每个字一个方块。而「扫到哪」本来就由外层 mask-image 决定，所以改成实色。
+        const fillColor = useTransform(wordProgress, progress =>
+            mixColors(baseColor, wordColor, Math.min(progress, 1)),
+        );
 
         const resolvedBaseColor = useTransform(wordStatus, status =>
             (isLineActive && status === 'passed') || lineStatus === 'passed' ? wordColor : baseColor,
@@ -185,9 +187,9 @@ const MonetWordSweep: React.FC<{
 
         // Glyphs with deep descenders (g, j, p, y, and many CJK forms) sit below the line box
         // whenever the font's em box is taller than `line-height`, which drives half-leading
-        // negative. `background-clip: text` paints no background outside the fill box and the mask
-        // clips at the overlay's border box, so the sweep used to stop mid-glyph — more visibly the
-        // larger the font. Grow both boxes, then pull the text back so its position is unchanged.
+        // negative. The sweep mask clips at its own border box, so it used to stop mid-glyph —
+        // more visibly the larger the font. Grow the box, then pull the text back so its position
+        // is unchanged.
         const sweepOverflowPx = Math.round(fontPx * 0.5);
 
         return (
@@ -220,11 +222,7 @@ const MonetWordSweep: React.FC<{
                                 marginTop: -sweepOverflowPx,
                                 paddingTop: sweepOverflowPx,
                                 paddingBottom: sweepOverflowPx,
-                                color: 'transparent',
-                                WebkitTextFillColor: 'transparent',
-                                backgroundImage: fillGradient,
-                                WebkitBackgroundClip: 'text',
-                                backgroundClip: 'text',
+                                color: fillColor,
                             }}
                         >
                             {text}

@@ -301,7 +301,10 @@ export const omni = {
 
         try {
             const playlists: OmniCollection[] = [];
-            const limit = 50;
+            // 分页是串行的：一页 50 条时，1000 条的上限要走 20 轮网络往返，歌单多的账号每次
+            // 回到主页都要排队等完。拉到 500 只需要两轮。三家适配器各自兜底 —— 酷狗会把 limit
+            // 夹到 KUGOU_MAX_PAGE_SIZE，QQ 是本地 slice，只有网易云原样透传（该接口上限 1000）。
+            const limit = 500;
             let offset = 0;
             let hasMore = true;
             while (hasMore && offset < 1000) {

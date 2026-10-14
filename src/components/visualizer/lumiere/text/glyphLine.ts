@@ -82,10 +82,15 @@ export const buildGlyphLine = (
     const height = Math.ceil(fontPx * 1.5);
     const pad = Math.ceil(fontPx * 0.25);
 
-    const limit = options.maxCanvasPx ?? (8192 + LUMIERE_NEUTRAL_OFFSET);
+    // 默认上限按最弱的设备取：安卓 WebView 的 MAX_TEXTURE_SIZE 常见就是 4096（桌面通常 16384），
+    // 而超出上限的纹理会以 INVALID_VALUE 上传失败 —— 采样一张不完整的纹理得到的是不透明黑，
+    // 画出来就是整行歌词变成一排黑方块。背景装饰字那一路（text/lyricEcho.ts）本来就显式传 4096，
+    // 漏掉的是歌词正行这一路。
+    const limit = options.maxCanvasPx ?? (4096 + LUMIERE_NEUTRAL_OFFSET);
     const resolution = Math.min(options.resolution, limit / (width + pad * 2), limit / (height + pad * 2));
-    canvas.width = Math.ceil((width + pad * 2) * resolution);
-    canvas.height = Math.ceil((height + pad * 2) * resolution);
+    // Math.ceil 有浮点误差，正好落在上限时会被抬到 limit + 1；而超过了设备上限就已经失败了。
+    canvas.width = Math.min(Math.ceil((width + pad * 2) * resolution), limit);
+    canvas.height = Math.min(Math.ceil((height + pad * 2) * resolution), limit);
     context.setTransform(resolution, 0, 0, resolution, 0, 0);
     context.font = fontSpec;
     context.textBaseline = 'middle';
