@@ -1,11 +1,17 @@
 import { create } from 'zustand';
 import { getStoredBoolean, getStoredString, setStoredBoolean } from './storagePrimitives';
 import {
+    MAX_VIDEO_LAYER_FILE_BYTES,
+    VideoLayerFileTooLargeError,
     canPersistVideoLayerFile,
+    clearVideoLayerFileBlob,
     clearVideoLayerFileHandle,
+    loadVideoLayerFileBlob,
     loadVideoLayerFileHandle,
     pickVideoLayerFile,
     readVideoLayerFileHandle,
+    requestVideoLayerStoragePersistence,
+    saveVideoLayerFileBlob,
     saveVideoLayerFileHandle,
 } from '../services/videoLayerFile';
 
@@ -85,7 +91,14 @@ export const useVideoLayerSettingsStore = create<VideoLayerSettingsState>((set, 
     const loadStoredFile = async (request: boolean) => {
         const revision = fileRevision;
         const handle = await loadVideoLayerFileHandle();
-        if (!handle || revision !== fileRevision) return;
+        if (revision !== fileRevision) return;
+        if (!handle) {
+            // 没有 handle 的运行时（安卓 WebView）把视频整份存在 IndexedDB 里，取回来直接用。
+            const stored = await loadVideoLayerFileBlob();
+            if (revision !== fileRevision) return;
+            if (stored) showFile(stored);
+            return;
+        }
         let result: Awaited<ReturnType<typeof readVideoLayerFileHandle>>;
         try {
             result = await readVideoLayerFileHandle(handle, request);
@@ -135,10 +148,22 @@ export const useVideoLayerSettingsStore = create<VideoLayerSettingsState>((set, 
         pickLocalFile: async () => {
             const picked = await pickVideoLayerFile();
             if (!picked) return null;
+            // 整份存下来是占配额的，超限就不收 —— 存进去失败再回退到"只在本次会话可用"更糟。
+            if (picked.file.size > MAX_VIDEO_LAYER_FILE_BYTES) {
+                throw new VideoLayerFileTooLargeError(picked.file.size);
+            }
             fileRevision += 1;
             restoreStarted = true;
-            if (picked.handle) await saveVideoLayerFileHandle(picked.handle);
-            else await clearVideoLayerFileHandle();
+            if (picked.handle) {
+                // 桌面：handle 只是个引用，不用把视频复制一份。
+                await saveVideoLayerFileHandle(picked.handle);
+                await clearVideoLayerFileBlob();
+            } else {
+                // 先申请持久化再写这份文件：persist() 需要用户手势，这里正好在点击链上。
+                await requestVideoLayerStoragePersistence();
+                await saveVideoLayerFileBlob(picked.file);
+                await clearVideoLayerFileHandle();
+            }
             showFile(picked.file);
             get().setVideoLayerEnabled(true);
             return picked.file.name;
@@ -148,6 +173,7 @@ export const useVideoLayerSettingsStore = create<VideoLayerSettingsState>((set, 
             restoreStarted = true;
             dropFile();
             await clearVideoLayerFileHandle();
+            await clearVideoLayerFileBlob();
         },
         restoreLocalFile: () => loadStoredFile(false),
         regrantLocalFile: () => loadStoredFile(true),

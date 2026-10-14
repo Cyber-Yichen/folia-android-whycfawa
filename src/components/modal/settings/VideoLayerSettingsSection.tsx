@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
-import { FolderOpen, KeyRound, X } from 'lucide-react';
+import { FolderOpen, KeyRound, Trash2 } from 'lucide-react';
 import type { Theme } from '../../../types';
 import {
     ensureVideoLayerFileRestored,
@@ -10,6 +10,7 @@ import {
     type VideoLayerFit,
 } from '../../../stores/useVideoLayerSettingsStore';
 import { setStatusMessage } from '../../../stores/useStatusMessageStore';
+import { VideoLayerFileTooLargeError } from '../../../services/videoLayerFile';
 
 // src/components/modal/settings/VideoLayerSettingsSection.tsx
 // Settings for the built-in video layer behind the lyrics. Reads the store directly, the way
@@ -70,6 +71,10 @@ const VideoLayerSettingsSection: React.FC<VideoLayerSettingsSectionProps> = ({
         try {
             await actions.pickLocalFile();
         } catch (error) {
+            if (error instanceof VideoLayerFileTooLargeError) {
+                setStatusMessage({ type: 'error', text: t('options.videoLayerFileTooLarge') });
+                return;
+            }
             console.error('[VideoLayer] Failed to pick a video:', error);
             setStatusMessage({ type: 'error', text: t('options.videoLayerPickFailed') });
         }
@@ -128,19 +133,21 @@ const VideoLayerSettingsSection: React.FC<VideoLayerSettingsSectionProps> = ({
                         </button>
                     )}
                     {hasLocalFile && (
+                        <button
+                            type="button"
+                            onClick={() => void actions.clearLocalFile()}
+                            className="px-3 py-1.5 rounded-lg text-xs border transition-all flex items-center gap-1.5"
+                            style={getAccentOptionStyle(false)}
+                        >
+                            <Trash2 size={12} className="opacity-70" />
+                            <span>{t('options.videoLayerClearFile')}</span>
+                        </button>
+                    )}
+                    {hasLocalFile && (
                         <span className="flex min-w-0 items-center gap-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
                             <span className="truncate max-w-[220px]" title={settings.localFileName ?? undefined}>
                                 {settings.localFileName}
                             </span>
-                            <button
-                                type="button"
-                                onClick={() => void actions.clearLocalFile()}
-                                className="rounded p-0.5 opacity-60 hover:opacity-100"
-                                aria-label={t('options.videoLayerClearFile')}
-                                title={t('options.videoLayerClearFile')}
-                            >
-                                <X size={12} />
-                            </button>
                         </span>
                     )}
                 </div>
