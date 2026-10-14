@@ -1,5 +1,6 @@
 import { getFromCache, removeFromCache, saveToCache } from './db';
 import { VIDEO_LAYER_FILE_BLOB_KEY, putCacheEntry } from './repositories/cacheRepository';
+import { isCapacitorAndroid } from '../platform/runtime';
 
 // src/services/videoLayerFile.ts
 // Local video file for the video layer behind the lyrics. Where the File System Access API exists
@@ -96,10 +97,28 @@ export type PickedVideoFile = {
 
 export const canPersistVideoLayerFile = (): boolean => (
     typeof window !== 'undefined' && (
-        typeof (window as OpenFilePickerWindow).showOpenFilePicker === 'function'
+        canUseFileHandlePersistence()
         || typeof indexedDB !== 'undefined'
     )
 );
+
+/**
+ * 是否用 File System Access API 的文件句柄来记住选择。**只认桌面。**
+ *
+ * 安卓 WebView 上 `showOpenFilePicker` 可能是存在的（Chrome 153 实测），但句柄存进 IndexedDB
+ * 之后重启会失效：既拿不到可用的 `queryPermission`（于是被当成已授权），底层 SAF 的读权限也没
+ * 有持久化，`getFile()` 直接抛错 —— 结果被归成「文件被移动或删除」，句柄被清掉，用户看到的就是
+ * 「重启后要重新选」。这条路上 `saveVideoLayerFileBlob` 一次都不会被调用，所以报告里连失败记录
+ * 都没有。安卓因此一律走「把视频整份存进 IndexedDB」。
+ */
+const canUseFileHandlePersistence = (): boolean => (
+    typeof window !== 'undefined'
+    && !isCapacitorAndroid()
+    && typeof (window as OpenFilePickerWindow).showOpenFilePicker === 'function'
+);
+
+/** 诊断用：当前走的是句柄还是整份存储。 */
+export const usesFileHandlePersistence = canUseFileHandlePersistence;
 
 const pickWithInput = (): Promise<File | null> => new Promise((resolve) => {
     const input = document.createElement('input');
@@ -112,11 +131,11 @@ const pickWithInput = (): Promise<File | null> => new Promise((resolve) => {
 
 /** Opens the native picker for one video; null when the user cancels. Must run inside a user gesture. */
 export const pickVideoLayerFile = async (): Promise<PickedVideoFile | null> => {
-    const picker = (window as OpenFilePickerWindow).showOpenFilePicker;
-    if (!picker) {
+    if (!canUseFileHandlePersistence()) {
         const file = await pickWithInput();
         return file ? { file, handle: null } : null;
     }
+    const picker = (window as OpenFilePickerWindow).showOpenFilePicker!;
     try {
         const [handle] = await picker({
             multiple: false,

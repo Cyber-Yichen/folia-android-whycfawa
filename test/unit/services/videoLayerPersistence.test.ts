@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { appDatabase } from '@/services/appDatabase';
 import {
     VIDEO_LAYER_FILE_BLOB_KEY,
@@ -12,6 +12,7 @@ import {
     clearVideoLayerFileBlob,
     loadVideoLayerFileBlob,
     saveVideoLayerFileBlob,
+    usesFileHandlePersistence,
 } from '@/services/videoLayerFile';
 
 // test/unit/services/videoLayerPersistence.test.ts
@@ -27,6 +28,9 @@ const clearAll = () => Promise.all([
 
 describe('video layer local file persistence', () => {
     beforeEach(clearAll);
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
 
     it('round-trips the picked video through IndexedDB', async () => {
         const file = new File(['video-bytes'], 'loop.mp4', { type: 'video/mp4' });
@@ -55,5 +59,24 @@ describe('video layer local file persistence', () => {
 
     it('caps a pick at 200MB', () => {
         expect(MAX_VIDEO_LAYER_FILE_BYTES).toBe(200 * 1024 * 1024);
+    });
+
+    it('never uses the file-handle path on Android', () => {
+        // 安卓上 showOpenFilePicker 可能是存在的，但句柄重启后会失效 —— 必须走整份存储。
+        vi.stubGlobal('window', {
+            Capacitor: { getPlatform: () => 'android' },
+            showOpenFilePicker: () => Promise.resolve([]),
+        });
+
+        expect(usesFileHandlePersistence()).toBe(false);
+    });
+
+    it('keeps the file-handle path on desktop', () => {
+        vi.stubGlobal('window', {
+            Capacitor: { getPlatform: () => 'web' },
+            showOpenFilePicker: () => Promise.resolve([]),
+        });
+
+        expect(usesFileHandlePersistence()).toBe(true);
     });
 });

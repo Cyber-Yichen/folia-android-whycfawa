@@ -11,7 +11,11 @@ import { isNeutralAudioEffects } from './audioEffects';
 import { getCollectionOrderDiagnosticLines } from './collectionOrderDiagnostics';
 import { getLyricsDiagnosticLines } from './lyricsDiagnostics';
 import { getLocalLibraryDiagnosticLines } from './localLibraryDiagnostics';
-import { loadVideoLayerFileBlob, readVideoLayerStoreFailure } from '../services/videoLayerFile';
+import {
+    loadVideoLayerFileBlob,
+    readVideoLayerStoreFailure,
+    usesFileHandlePersistence,
+} from '../services/videoLayerFile';
 import { useVideoLayerSettingsStore } from '../stores/useVideoLayerSettingsStore';
 import { collectWebGL2Diagnostics, formatWebGL2DiagnosticsLine } from './webglDiagnostics';
 import { BUILTIN_VISUALIZER_BACKGROUND_MODES } from '../types/visualizerModes';
@@ -544,6 +548,8 @@ const readVideoLayerLines = async (): Promise<string[]> => {
         `  enabled: ${state.videoLayerEnabled} url: ${state.videoLayerUrl ? 'set' : '(none)'}`,
         `  runtime: status=${state.localFileStatus}`
             + ` name=${state.localFileStatus === 'none' ? '(none)' : (state.localFileName ?? '(unnamed)')}`,
+        // 存的是句柄还是整份：安卓上曾经误走句柄那条路，报告里一眼能看出用的是哪种。
+        `  pick path: ${usesFileHandlePersistence() ? 'file-handle' : 'indexeddb-blob'}`,
     ];
 
     try {

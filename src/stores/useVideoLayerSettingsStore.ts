@@ -13,6 +13,7 @@ import {
     requestVideoLayerStoragePersistence,
     saveVideoLayerFileBlob,
     saveVideoLayerFileHandle,
+    usesFileHandlePersistence,
 } from '../services/videoLayerFile';
 
 // src/stores/useVideoLayerSettingsStore.ts
@@ -90,7 +91,8 @@ export const useVideoLayerSettingsStore = create<VideoLayerSettingsState>((set, 
 
     const loadStoredFile = async (request: boolean) => {
         const revision = fileRevision;
-        const handle = await loadVideoLayerFileHandle();
+        // 不走句柄的运行时（安卓）直接看整份存储：那边即使残留着旧句柄也读不出文件。
+        const handle = usesFileHandlePersistence() ? await loadVideoLayerFileHandle() : null;
         if (revision !== fileRevision) return;
         if (!handle) {
             // 没有 handle 的运行时（安卓 WebView）把视频整份存在 IndexedDB 里，取回来直接用。
