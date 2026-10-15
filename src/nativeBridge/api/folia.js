@@ -32,6 +32,12 @@ import {
   qqGetJSON,
   buildQQAuthComm,
   qqSongDetailsBatch,
+  handleQQGuessYouLike,
+  handleQQDailySongs,
+  handleQQRecommendPlaylists,
+  handleQQPlaylistTracksWrite,
+  handleQQPlaylistSubscribe,
+  handleQQSubscriptionStatus,
 } from './qq.js';
 import {
   qqWechatGetLoginQr,
@@ -58,6 +64,10 @@ import {
   downloadKGLyricByCandidate,
   kgPostAndroidSigned,
   upgradeKGYouthDayVip,
+  handleKGEverydayRecommend,
+  handleKGPersonalFm,
+  handleKGEverydayHistory,
+  handleKGTopCardYouth,
 } from './kugou.js';
 import { handleBodianRequest } from './bodian.js';
 
@@ -963,6 +973,32 @@ async function routeFoliaQqRequest(operation, params, segments, url, cookie) {
     return { code: 0, response: { singer: json?.singer || { code: 0, data: {} } } };
   }
 
+  // ---- 推荐（qq-music-api 3.2.0 / 3.3.0）—— 与自建后端同一套字段，读不出来就是空结果 ----
+  if (operation === 'user_guess_you_like') {
+    return await handleQQGuessYouLike(cookie);
+  }
+  if (operation === 'user_daily_songs') {
+    return await handleQQDailySongs(cookie);
+  }
+  if (operation === 'recommend_playlists') {
+    const limit = numberValue(params.limit, 25);
+    return await handleQQRecommendPlaylists(limit, cookie);
+  }
+  // ---- 写入：正文已经在 mergeOperationParams 里并进 params，不重试 ----
+  if (operation === 'user_playlist_tracks') {
+    return await handleQQPlaylistTracksWrite(params, cookie);
+  }
+  if (operation === 'user_playlist_subscribe') {
+    return await handleQQPlaylistSubscribe(params, cookie);
+  }
+  if (operation === 'user_subscription_status') {
+    return await handleQQSubscriptionStatus(
+      firstValue(params.type, 'playlist'),
+      firstValue(params.ids, ''),
+      cookie,
+    );
+  }
+
   return {
     __foliaBridgeError: 'UNSUPPORTED',
     provider: 'qq',
@@ -1182,34 +1218,39 @@ async function handleFoliaKugouRequest(input, url) {
     };
   }
   if (operation === 'everyday_recommend') {
-    // 每日推荐：POST /everyday_song_recommend（android 签名 + x-router everydayrec.service.kugou.com），
-    // 与 KuGouMusicApi 的 module/everyday_recommend.js 一致。以前这里是「成功 + 空数组」的占位实现，
-    // 界面拿到的是「成功但一首都没有」，所以每日推荐永远是空的 —— 不是没登录，也不是网络问题。
-    const body = await kgPostAndroidSigned(
-      'https://gateway.kugou.com',
-      '/everyday_song_recommend',
-      cookie,
-      { platform: 'ios' },
-      {},
-      { 'x-router': 'everydayrec.service.kugou.com' },
-    );
-    const data = (body && body.data) || body || {};
-    const songs = Array.isArray(data.song_list) ? data.song_list
-      : Array.isArray(data.songs) ? data.songs
-      : Array.isArray(data.info) ? data.info
-      : [];
-    return {
-      status: 1,
-      error_code: 0,
-      data: { ...data, info: songs, songs, total: data.total || songs.length },
-    };
+    const body = await handleKGEverydayRecommend(cookie, params.platform);
+    return body || { status: 1, error_code: 0, data: { songs: [], total: 0 } };
   }
-  if (operation === 'personal_fm' || operation === 'top_card_youth') {
-    // 仍未实现（见本文件顶部说明）：私人 FM 与青年卡还没有对应实现，先保持空。
-    return { status: 1, error_code: 0, data: { info: [], songs: [], lists: [], total: 0 } };
+  if (operation === 'personal_fm') {
+    const body = await handleKGPersonalFm(cookie, {
+      action: params.action,
+      hash: params.hash,
+      songid: params.songid,
+      playtime: params.playtime,
+      mode: params.mode,
+      song_pool_id: params.song_pool_id,
+      is_overplay: params.is_overplay,
+      remain_songcnt: params.remain_songcnt,
+      platform: params.platform,
+    });
+    return body || { status: 1, error_code: 0, data: { songs: [], total: 0 } };
+  }
+  if (operation === 'top_card_youth') {
+    const body = await handleKGTopCardYouth(cookie, {
+      card_id: params.card_id,
+      pagesize: params.pagesize,
+      tagid: params.tagid,
+    });
+    return body || { status: 1, error_code: 0, data: { songs: [], total: 0 } };
   }
   if (operation === 'everyday_history') {
-    return { status: 1, error_code: 0, data: { info: [], list: [], total: 0 } };
+    const body = await handleKGEverydayHistory(cookie, {
+      mode: params.mode,
+      date: params.date,
+      history_name: params.history_name,
+      platform: params.platform,
+    });
+    return body || { status: 1, error_code: 0, data: { info: [], list: [], total: 0 } };
   }
   if (operation === 'user_cloud') {
     return { status: 1, error_code: 0, data: { info: [], songs: [], total: 0 } };
