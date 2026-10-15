@@ -371,6 +371,21 @@ export default {
     "loginExpired": "Login kedaluwarsa. Silakan login lagi",
     "songPreviewOnly": "Hanya pratinjau tersedia. Masuk dengan akun yang dapat memutar lagu lengkap.",
     "songRegionRestricted": "Pemutaran hanya tersedia di Tiongkok daratan. Periksa koneksi jaringan Anda.",
+    "songTemporarilyUnavailable": "Lagu ini belum dapat diputar saat ini",
+    "songTemporarilyUnavailableSignInHint": "Lagu ini belum dapat diputar saat ini. Masuk ke akun mungkin dapat membantu.",
+    "songTemporarilyUnavailableMaybeMembership": "Lagu ini belum dapat diputar saat ini. Pemutaran penuh mungkin memerlukan keanggotaan.",
+    "songTemporarilyUnavailableMaybeRegion": "Lagu ini belum dapat diputar saat ini. Lagu ini mungkin dibatasi di wilayah Anda.",
+    "songNetworkFailed": "Gagal terhubung untuk memuat lagu ini. Periksa jaringan Anda lalu coba lagi.",
+    "songRequestTimedOut": "Waktu memuat lagu ini habis. Silakan coba lagi.",
+    "songRetrying": "Koneksi gagal. Mencoba lagi…",
+    "songServiceUnavailable": "Layanan musik sedang tidak tersedia. Silakan coba lagi nanti.",
+    "songServiceNotConfigured": "Sumber musik ini tidak tersedia di sini (belum dikonfigurasi atau memerlukan aplikasi desktop).",
+    "songRateLimited": "Terlalu banyak permintaan. Coba lagi dalam {{seconds}} detik.",
+    "songRateLimitedNoWait": "Terlalu banyak permintaan. Silakan coba lagi nanti.",
+    "songLoginRequired": "Masuk ke akun untuk memutar lagu ini.",
+    "songMembershipRequired": "Lagu ini memerlukan keanggotaan untuk diputar.",
+    "songPurchaseRequired": "Lagu ini harus dibeli sebelum dapat diputar.",
+    "songEntitlementRequired": "Akun Anda tidak dapat memutar lagu ini (mungkin memerlukan keanggotaan atau pembelian).",
     "loggedOut": "Berhasil logout",
     "clickToPlay": "Klik putar untuk mulai",
     "liked": "Ditambahkan ke Lagu Disukai",
@@ -1046,10 +1061,12 @@ export default {
     "devSourceHint": "Mod di direktori pengembangan: setelah dikonfirmasi, mengubah berkasnya tidak membatalkan persetujuan (hanya build pengembangan).",
     "signatureVerified": "Terverifikasi",
     "signatureVerifiedDetail": "Memiliki tanda tangan resmi Folium yang valid ({{key}}): sumber dan isinya telah ditinjau Folium dan tidak berubah sejak ditandatangani. Setelah diaktifkan, mod tetap berjalan dengan hak penuh aplikasi.",
+    "signatureBeta": "Pratinjau",
+    "signatureBetaDetail": "Ditandatangani dengan kunci pratinjau Folium ({{key}}): hanya lolos tinjauan keamanan. Implementasinya mungkin belum rapi dan fiturnya bisa saja sama sekali tidak berfungsi. Ditujukan bagi pengembang komunitas untuk bereksperimen; sebagian besar pengguna sebaiknya tidak mengaktifkannya. Setelah diaktifkan, mod tetap berjalan dengan hak penuh aplikasi.",
     "signatureUnsigned": "Belum terverifikasi",
     "signatureUnsignedDetail": "Tanpa tanda tangan resmi: ini mod pihak ketiga yang belum ditinjau Folium. Aktifkan hanya mod dari sumber yang Anda percayai.",
     "signatureInvalid": "Tanda tangan tidak cocok",
-    "signatureInvalidDetail": "Mod ini ditandatangani, tetapi tanda tangannya gagal diperiksa ({{reason}}), jadi bukan lagi mod terverifikasi resmi. Biasanya berkasnya diubah setelah ditandatangani; jika bukan Anda yang mengubahnya, jangan aktifkan.",
+    "signatureInvalidDetail": "Mod ini ditandatangani, tetapi tanda tangannya gagal diperiksa ({{reason}}), jadi tanda tangan ini tidak lagi bisa menjaminnya. Biasanya berkasnya diubah setelah ditandatangani; jika bukan Anda yang mengubahnya, jangan aktifkan.",
     "signatureReasons": {
       "malformed": "berkas tanda tangan rusak",
       "unknown-key": "kunci penanda tangan tidak dipercaya",
@@ -2456,6 +2473,7 @@ export default {
     "openaiApiKey": "Kunci API OpenAI",
     "aiApiKeySavedPlaceholder": "Tersimpan (kosongkan untuk mempertahankan)",
     "aiApiKeySavedDesc": "Kunci disimpan terenkripsi di perangkat ini dan tidak ditampilkan lagi. Masukkan kunci baru lalu simpan untuk menggantinya.",
+    "aiApiKeyEndpointMismatchDesc": "Kunci tersimpan hanya dikirim ke {{endpoint}}. Masukkan kunci lagi untuk memakai alamat lain.",
     "aiApiKeyClear": "Hapus",
     "openaiApiUrl": "URL API OpenAI",
     "openaiApiModel": "Model OpenAI",
@@ -2935,6 +2953,33 @@ export default {
       "qqPrivatePlaylists": {
         "title": "Playlist Pribadi QQ Music",
         "description": "Setelah masuk, playlist pribadi buatan Anda kini dapat memuat lagu dengan paging sungguhan. Backend yang di-host sendiri harus memakai qq-music-api 3.1.2 atau lebih baru; backend lama beralih otomatis, dan playlist yang tidak dapat dibaca kini menjelaskan bahwa playlist itu tidak publik, alih-alih tampil kosong tanpa keterangan."
+      }
+    },
+    "v0_7_19": {
+      "intro": "0.7.19 mengubah halaman artis dan album di Bravais menjadi poster bergaya Tempera. Saat lagu online gagal diputar, Folia kini menyebutkan alasan sebenarnya, tidak lagi selalu menyebutnya dihapus; visualizer per kata seperti Tempera memotong lirik Tionghoa dan Jepang dengan lebih wajar; dan versi web kembali bisa dibuka tanpa jaringan.",
+      "artistPoster": {
+        "title": "Halaman Artis Menjadi Poster",
+        "description": "Strip info lengkap di halaman artis Bravais kini digambar sebagai poster bergaya Tempera yang tersemat di kiri dinding. Tata letaknya tetap untuk tiap artis, warnanya diambil dari tiga album terpopuler artis tersebut, dan nama menyesuaikan lebar tanpa meluap. Dinding album di kanan ikut miring, dan Anda tetap bisa menyeret dan menggulir saat dinding miring."
+      },
+      "albumPoster": {
+        "title": "Poster Album dan Mozaik Sampul",
+        "description": "Halaman album juga mendapat poster: sampul ditempel di atas kertas bertitik, judul besar dengan bayangan berlapis, serta artis, tahun, dan jumlah lagu, lengkap dengan animasi masuk. Buka album dari halaman artis dan sampulnya terbang dari ubin yang Anda klik ke poster, lalu terbang kembali saat Anda kembali. Di dinding sebelahnya, album dengan satu sampul disusun menjadi satu sampul besar di seluruh lagu; jika album bercampur sampul single, sampul yang berulang dipotong menjadi pecahan yang kembali berwarna penuh saat diarahkan kursor atau sedang diputar."
+      },
+      "playbackFailure": {
+        "title": "Kegagalan Putar Kini Ada Alasannya",
+        "description": "Lagu online yang gagal diputar tidak lagi selalu ditandai \"lagu dihapus\". Folia kini membedakan lagu yang dihapus, jaringan terputus atau waktu habis, gangguan layanan atau batas permintaan, lagu yang memerlukan login, keanggotaan, atau pembelian, serta pembatasan wilayah. Hanya lagu yang benar-benar dihapus yang menghitung mundur ke lagu berikutnya dan mencari versi lain; saat jaringan terputus, pemutaran berhenti dan antrean tetap utuh sehingga Anda bisa mencoba lagi atau melewati; kasus login, keanggotaan, dan pembelian hanya ditampilkan tanpa dicoba berulang kali. Berlaku untuk NetEase, QQ Music, KuGou, dan Bodian."
+      },
+      "lyricSegmenter": {
+        "title": "Pemotongan Kata Tionghoa dan Jepang Lebih Wajar",
+        "description": "Tempera, Sonnet, dan mode lain yang menata lirik per kata kini memakai pemotong kata bawaan baru, icu-folia. Bahasa Tionghoa tidak lagi terpotong-potong (idiom dan kata tetap utuh, partikel seperti 的 dan 了 menempel pada kata sebelumnya), dan bahasa Jepang dipotong per frasa yang wajar. Tempera juga tidak lagi menyebar kata pendek yang seharusnya bersama ke bidikan yang berbeda. Pemotongan kata yang Anda simpan sendiri tetap diutamakan, dan kamusnya hanya dimuat saat diperlukan."
+      },
+      "offlineStartup": {
+        "title": "Versi Web Bisa Dibuka Tanpa Jaringan",
+        "description": "Memperbaiki versi web / PWA yang gagal dimuat saat disegarkan tanpa koneksi jaringan. Sampul lokal juga tampil saat offline, dan pada kunjungan pertama tidak lagi menunggu cache latar selesai diunduh. Ikon yang dipakai tema kini dimuat sesuai kebutuhan, sehingga lebih sedikit yang diunduh saat aplikasi dimulai."
+      },
+      "stabilityFixes": {
+        "title": "Lebih Stabil di Segala Sisi",
+        "description": "Di Android, membuka Opsi atau lapisan lain di dinding Bravais atau Lattice tidak lagi memperlihatkan kilasan dinding di bawahnya. Memperbaiki crash sesekali saat mengubah ukuran jendela ketika Tempera sedang diputar. Latar Sora berhenti menggambar saat dijeda, dan bintangnya diam dalam mode statis. Jendela catatan rilis yang muncul saat aplikasi dimulai kini bisa ditutup dengan Esc."
       }
     },
     "v0_7_18": {
@@ -3422,7 +3467,12 @@ export default {
     "albumsSyncing": "Memuat album {{loaded}} / {{total}}",
     "albumsSyncingOpen": "Memuat album… {{loaded}}",
     "albumsInterrupted": "Album berhenti di {{loaded}}",
-    "panelTitle": "Lagu populer dan album"
+    "panelTitle": "Lagu populer dan album",
+    "posterLabel": "Poster artis",
+    "posterTopSongs": "Lagu populer"
+  },
+  "libraryBravaisAlbum": {
+    "posterLabel": "Poster album"
   },
   "artistGrid": {
     "localArtist": "Artis Lokal: {{artistName}}",

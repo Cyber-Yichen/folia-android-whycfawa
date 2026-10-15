@@ -14,6 +14,7 @@ import { useWallCameraPan, type LatticeCamera } from '../../wall/useWallCameraPa
 import { useLatticePosterSelection } from './useLatticePosterSelection';
 import { useWallKeyboardFocus } from './useWallKeyboardFocus';
 import { useWallPointerPan } from '../../wall/useWallPointerPan';
+import { formatWorldTransform } from '../../wall/wallView';
 import type { LatticeTile } from './latticeModel';
 import LatticePoster from './LatticePoster';
 import { countRender } from '../../../dev/renderCount';
@@ -141,8 +142,11 @@ export default function PosterWall({
              *
              * 平移本身不受影响：2D transform 同样可以被合成器处理，
              * pan 期间 Chromium 会临时提层，pan 结束自动降级。
+             *
+             * formatWorldTransform 另外把平移对齐到整数设备像素，避免亚像素位移让
+             * Chromium 每帧重栅格化整面墙 —— 两件事配合，缺一个都会掉回闪烁。
              */
-            worldRef.current.style.transform = `translate(${next.x}px, ${next.y}px) scale(${next.scale})`;
+            worldRef.current.style.transform = formatWorldTransform(next.x, next.y, next.scale);
         }
         publishCurrentPosterVisibility(next);
         if (!updateBounds || frameRef.current !== null) return;

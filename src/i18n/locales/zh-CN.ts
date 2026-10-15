@@ -373,6 +373,21 @@ export default {
     "loginExpired": "登录状态已失效，请重新登录",
     "songPreviewOnly": "当前账号仅可试听此歌曲，请登录具有完整播放权限的账号",
     "songRegionRestricted": "仅限中国大陆地区播放，请检查网络环境",
+    "songTemporarilyUnavailable": "暂时无法播放这首歌",
+    "songTemporarilyUnavailableSignInHint": "暂时无法播放这首歌，登录后可能可以播放",
+    "songTemporarilyUnavailableMaybeMembership": "暂时无法播放这首歌，完整播放可能需要会员",
+    "songTemporarilyUnavailableMaybeRegion": "暂时无法播放这首歌，可能受所在地区限制",
+    "songNetworkFailed": "连接失败，无法获取这首歌，请检查网络后重试",
+    "songRequestTimedOut": "获取歌曲超时，请稍后重试",
+    "songRetrying": "连接失败，正在重试…",
+    "songServiceUnavailable": "音源服务暂时不可用，请稍后重试",
+    "songServiceNotConfigured": "当前环境无法使用这个音源（未配置或需要桌面版）",
+    "songRateLimited": "请求过于频繁，请在 {{seconds}} 秒后重试",
+    "songRateLimitedNoWait": "请求过于频繁，请稍后重试",
+    "songLoginRequired": "登录后才能播放这首歌",
+    "songMembershipRequired": "这首歌需要会员才能播放",
+    "songPurchaseRequired": "这首歌需要购买后才能播放",
+    "songEntitlementRequired": "当前账号没有这首歌的播放权限（可能需要会员或购买）",
     "loggedOut": "已退出登录",
     "clickToPlay": "点击播放开始",
     "liked": "已添加到喜欢的音乐",
@@ -1050,10 +1065,12 @@ export default {
     "devSourceHint": "开发目录中的模组：确认后修改文件不会撤销授权（仅开发版）。",
     "signatureVerified": "官方认证",
     "signatureVerifiedDetail": "带有有效的 Folium 官方签名（{{key}}）：来源与内容经过官方审查，签名后未被修改。它启用后仍以应用的完整权限运行。",
+    "signatureBeta": "先行测试",
+    "signatureBetaDetail": "由 Folium 先行测试密钥签名（{{key}}）：仅通过了安全审查，不保证功能实现的整洁，甚至功能可能完全无法工作。主要供社区开发者做创意实验，普通用户请勿轻易启用。它启用后仍以应用的完整权限运行。",
     "signatureUnsigned": "未验证",
     "signatureUnsignedDetail": "没有官方签名：这是未经 Folium 审查的第三方模组，请只启用你信任来源的模组。",
     "signatureInvalid": "签名不匹配",
-    "signatureInvalidDetail": "模组带有签名，但校验失败（{{reason}}），不再视为官方认证。通常是签名后文件被改动过；如果不是你自己改的，请不要启用。",
+    "signatureInvalidDetail": "模组带有签名，但校验失败（{{reason}}），这份签名不能作为审查依据。通常是签名后文件被改动过；如果不是你自己改的，请不要启用。",
     "signatureReasons": {
       "malformed": "签名文件格式错误",
       "unknown-key": "签名密钥不受信任",
@@ -2593,6 +2610,7 @@ export default {
     "openaiApiKey": "密钥",
     "aiApiKeySavedPlaceholder": "已保存（留空则保持不变）",
     "aiApiKeySavedDesc": "密钥已加密保存在本机，不会再显示。输入新密钥并保存可替换。",
+    "aiApiKeyEndpointMismatchDesc": "已保存的密钥只会发往 {{endpoint}}。换用其他地址需要重新输入密钥。",
     "aiApiKeyClear": "清除",
     "openaiApiUrl": "OpenAI 接口链接",
     "openaiApiModel": "模型",
@@ -3049,6 +3067,33 @@ export default {
       "qqPrivatePlaylists": {
         "title": "QQ 音乐不公开歌单",
         "description": "登录后，自己创建的不公开歌单也能读取歌曲，并支持真正的分页加载。自建后端需要升级到 qq-music-api 3.1.2 或更新版本；旧后端会自动回退，读不到时会明确提示「不是公开歌单」，不再静默显示为空。"
+      }
+    },
+    "v0_7_19": {
+      "intro": "0.7.19 把 Bravais 的歌手页和专辑页做成了凝彩风格的海报；在线播放失败时会说明真正的原因，不再一律报「已下架」；凝彩等按词排版的模式对中文、日文的分词更自然；网页版断网也能正常启动。",
+      "artistPoster": {
+        "title": "歌手页变成海报",
+        "description": "Bravais 歌手页的完整信息条画成一张凝彩风格的海报，钉在墙的左边：构图按歌手固定，配色取自这位歌手最热门的三张专辑；名字按宽度自动缩放，不会溢出。右边的专辑墙随之倾斜，倾斜着也能照常拖动和滚动。"
+      },
+      "albumPoster": {
+        "title": "专辑页海报与封面拼贴",
+        "description": "专辑页同样换成海报：封面贴在点阵纸上，配上带立体残影的大标题和歌手、年份、曲目数，打开时有一段入场动画。从歌手页点开专辑，封面会从被点的那张磁贴飞到海报上，返回时再飞回原位。旁边墙上的曲目：整张专辑只有一张封面时拼成一整张大封面；专辑里混有单曲封面时，重复的封面切成碎片，悬停或正在播放时恢复原色。"
+      },
+      "playbackFailure": {
+        "title": "播放失败会说明原因",
+        "description": "在线歌曲播放失败不再一律显示「歌曲已下架」，而是区分下架、网络中断或超时、服务异常或限流、需要登录 / 会员 / 购买、地区限制等原因。只有真正下架时才倒计时跳到下一首并查找替代版本；断网时会停下来保留队列，可以重试或跳过；需要登录、会员或购买时只做提示，不反复重试。网易云、QQ 音乐、酷狗和波点都已支持。"
+      },
+      "lyricSegmenter": {
+        "title": "中文、日文歌词分词更自然",
+        "description": "凝彩、商籁等按词排版的模式改用新的默认分词 icu-folia：中文不再被切碎（「千言万语」「口袋」保持完整，「的」「了」跟着前一个词），日文按文节切分。凝彩也不会再把「我想你」这样连在一起的单字拆到不同镜头里。你手动保存的分词仍然优先；分词词典只在用到时才加载。"
+      },
+      "offlineStartup": {
+        "title": "网页版断网也能启动",
+        "description": "修复网页版 / PWA 断网后刷新打不开的问题，本地封面在离线时也能正常显示，首次打开也不必等后台缓存下载完才显示本地封面。主题里用到的图标改为按需加载，启动时下载的内容更少。"
+      },
+      "stabilityFixes": {
+        "title": "更稳定的细节",
+        "description": "Android 上在 Bravais / Lattice 墙面打开设置等覆盖层时，不再闪出底下的墙；凝彩播放时调整窗口大小偶尔崩溃的问题已修复；Sora 背景在暂停时停止绘制，静态模式下星点定格；启动时弹出的版本更新窗口可以按 Esc 关闭。"
       }
     },
     "v0_7_18": {
@@ -3538,7 +3583,12 @@ export default {
     "albumsSyncing": "专辑加载中 {{loaded}} / {{total}}",
     "albumsSyncingOpen": "专辑加载中… {{loaded}}",
     "albumsInterrupted": "专辑停在第 {{loaded}} 张",
-    "panelTitle": "热门歌曲与专辑"
+    "panelTitle": "热门歌曲与专辑",
+    "posterLabel": "歌手海报",
+    "posterTopSongs": "热门歌曲"
+  },
+  "libraryBravaisAlbum": {
+    "posterLabel": "专辑海报"
   },
   "artistGrid": {
     "localArtist": "本地歌手: {{artistName}}",

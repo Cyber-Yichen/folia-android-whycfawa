@@ -7,17 +7,15 @@ import { applyLocalLibraryEntityDisplay, buildUnifiedLocalSong } from '../../../
 import { buildNavidromeSourceRevision } from '../../../services/playbackRecovery/sourceRevision';
 import { getLocalLibraryCatalogSnapshot } from '../../../services/localLibraryEntityRepository';
 import { getNavidromeConfig, navidromeApi } from '../../../services/navidromeService';
-import {
-    applyOnlineAudioSourceMetadata,
-    loadOnlineSongAudioSource,
-    loadOnlineSongLyrics,
-} from '../../../services/onlinePlayback';
+import { applyOnlineAudioSourceMetadata, loadOnlineSongAudioSource } from '../../../services/onlinePlayback';
+import { getPlaybackFailureMessage } from '../../../services/playbackRecovery/playbackFailurePolicy';
 import type { ThemeCacheSongKey } from '../../../services/themeCache';
 import type { LyricData, LocalSong, SongResult, StatusMessage } from '../../../types';
 import type { NavidromeSong } from '../../../types/navidrome';
 import { hydrateNavidromeLyricPayload, resolvePreferredNavidromeLyrics } from '../../../utils/appNavidromeLyrics';
 import { hasRenderableLyrics } from '../../../utils/appPlaybackHelpers';
 import {
+    getOnlineProviderIdForSong,
     isLocalPlaybackSong,
     isNavidromePlaybackSong,
     isSamePlaybackSong,
@@ -29,12 +27,13 @@ import { migrateLyricDataRenderHints } from '../../../utils/lyrics/renderHints';
 import { resolveLocalSongLyrics } from '../../../utils/lyrics/localSongLyrics';
 import { loadOnlineLyricsState, resolveOnlineLyrics } from '../../../utils/onlineLyricsState';
 import type { AudioQualityPreference, MediaId } from '../../../types/onlineMusic';
+import type { PlaybackFailure, RestorePlaybackSourceOutcome } from '../../../types/playbackFailure';
 import { omni } from '../../../services/onlineMusic/omni';
 import { getCachedSongCoverUrl, getSongCacheWithLegacyMigration } from '../../../services/onlineMusic/resourceCache';
 import { getSongCoverUrl } from '../../../services/onlineMusic/songMetadata';
 import { useOnlineProviderAccountStore } from '../../../stores/useOnlineProviderAccountStore';
 import { setStatusMessage as setStatusMsg } from '../../../stores/useStatusMessageStore';
-import { setActiveLocalLyricsSource, setAudioSrc, setCachedCoverUrl, setCurrentSong } from '../../../stores/usePlaybackStore';
+import { setActiveLocalLyricsSource, setAudioSrc, setCachedCoverUrl, setCurrentSong, usePlaybackStore } from '../../../stores/usePlaybackStore';
 import { useLyricSettingsStore } from '../../../stores/useLyricSettingsStore';
 
 // src/components/app/playback/restorePlaybackSource.ts
@@ -55,6 +54,13 @@ type RestorePlaybackSourceParams = {
     }) => Promise<unknown>;
     persistLastPlaybackCache?: (song: SongResult | null, queue: SongResult[]) => Promise<void>;
     queue?: SongResult[];
+    /**
+     * The caller has a still-valid source of its own to fall back on (the window handoff's snapshot URL).
+     * An online restore then fails after one attempt instead of waiting through the loader's silent
+     * retries, and shows no message: the fallback plays, and should it fail too, its media error is
+     * reported like any other.
+     */
+    hasFallbackSource?: boolean;
 };
 
 const replaceBlobUrl = (
@@ -67,6 +73,17 @@ const replaceBlobUrl = (
     blobUrlRef.current = nextBlobUrl;
 };
 
+// Restore context: one plain error line naming the reason, no countdown and no buttons.
+// It never replaces a persistent toast: that belongs to a newer play request (its retry / skip, or a
+// countdown), which the store cannot yet tell apart from this song while that request is loading.
+const showRestoreFailure = (failure: PlaybackFailure) => {
+    const { key, params } = getPlaybackFailureMessage(failure);
+    const message: StatusMessage = { type: 'error', text: params ? i18n.t(key, params) : i18n.t(key) };
+    setStatusMsg(prev => (prev?.persistent ? prev : message));
+};
+
+// Restores the remembered song's source and lyrics. 'stale' means the listener moved on to another
+// song while this was awaiting, so nothing was written for the old one.
 export const restorePlaybackSourceForSong = async (
     song: SongResult,
     {
@@ -79,8 +96,9 @@ export const restorePlaybackSourceForSong = async (
         restoreCachedThemeForSong,
         persistLastPlaybackCache,
         queue,
+        hasFallbackSource = false,
     }: RestorePlaybackSourceParams,
-) => {
+): Promise<RestorePlaybackSourceOutcome> => {
     await restoreCachedThemeForSong?.(song, {
         allowLastUsedFallback: true,
         preserveCurrentOnMiss: false,
@@ -95,7 +113,7 @@ export const restorePlaybackSourceForSong = async (
 
         if (!navidromeSongToRestore || !config || !navidromeId) {
             console.warn('[restorePlaybackSourceForSong] Navidrome song could not be restored');
-            return false;
+            return 'failed';
         }
 
         currentOnlineAudioUrlFetchedAtRef.current = null;
@@ -130,7 +148,7 @@ export const restorePlaybackSourceForSong = async (
         } as SongResult;
         setCurrentSong(restoredSong);
         void persistLastPlaybackCache?.(restoredSong, queue && queue.length > 0 ? queue : [restoredSong]);
-        return true;
+        return 'restored';
     }
 
     const legacyLocalData = (song as SongResult & { localData?: LocalSong }).localData;
@@ -156,7 +174,7 @@ export const restorePlaybackSourceForSong = async (
                 type: 'info',
                 text: i18n.t('status.localSongNotInLibrary'),
             });
-            return false;
+            return 'failed';
         }
 
         const blobUrl = await getAudioFromLocalSong(songToRestore);
@@ -166,7 +184,7 @@ export const restorePlaybackSourceForSong = async (
                 type: 'info',
                 text: i18n.t('status.localFileReauthorize'),
             });
-            return false;
+            return 'failed';
         }
 
         songToRestore = await ensureLocalSongCoverAsset(songToRestore);
@@ -206,10 +224,20 @@ export const restorePlaybackSourceForSong = async (
         }
         const restoredQueue = replacePlaybackSongInQueue(queue || [restoredSong], restoredSong);
         void persistLastPlaybackCache?.(restoredSong, restoredQueue);
-        return true;
+        return 'restored';
     }
 
+    // Every await below can outlive the restore: the listener may pick another song meanwhile, and
+    // a late write would put this song's status, source or lyrics over theirs.
+    const isCurrent = () => isSamePlaybackSong(usePlaybackStore.getState().currentSong, song);
+    const providerId = getOnlineProviderIdForSong(song) ?? undefined;
+    const reportFailure = (failure: PlaybackFailure) => {
+        if (hasFallbackSource) console.warn('[restorePlaybackSourceForSong] Source not refreshed; the caller falls back to its own', failure);
+        else showRestoreFailure(failure);
+    };
+
     const onlineLyricsState = await loadOnlineLyricsState(song);
+    if (!isCurrent()) return 'stale';
     if (onlineLyricsState) {
         setCurrentSong(prev => {
             if (!prev || !isSamePlaybackSong(prev, song)) return prev;
@@ -218,15 +246,22 @@ export const restorePlaybackSourceForSong = async (
     }
 
     if (!omni.canPlaySong(song)) {
-        setStatusMsg({ type: 'error', text: i18n.t('status.playbackFailed') });
-        return false;
+        reportFailure({ reason: 'unknown', stage: 'restore', providerId });
+        return 'failed';
     }
 
-    const audioResult = await loadOnlineSongAudioSource(song, audioQuality, null);
-    if (audioResult.kind === 'unavailable') {
-        setStatusMsg({ type: 'error', text: i18n.t(audioResult.reason === 'preview-only' ? 'status.songPreviewOnly'
-            : audioResult.reason === 'auth-required' ? 'status.loginExpired' : 'status.playbackFailed') });
-        return false;
+    const audioResult = await loadOnlineSongAudioSource(song, audioQuality, null, hasFallbackSource
+        ? { stage: 'restore' }
+        : { stage: 'restore', retry: { isCurrent } });
+    if (!isCurrent()) {
+        if (audioResult.kind === 'ok' && audioResult.blobUrl) {
+            URL.revokeObjectURL(audioResult.blobUrl);
+        }
+        return 'stale';
+    }
+    if (audioResult.kind === 'failed') {
+        reportFailure(audioResult.failure);
+        return 'failed';
     }
 
     if (audioResult.blobUrl) {
@@ -248,48 +283,52 @@ export const restorePlaybackSourceForSong = async (
         void persistLastPlaybackCache?.(restoredSong, restoredQueue);
     }
 
-    const cachedLyrics = await getSongCacheWithLegacyMigration<LyricData>('lyric', song, migrateLyricDataRenderHints);
-    const restoredPreferredLyrics = resolveOnlineLyrics(onlineLyricsState, cachedLyrics);
-    const restoredLyricText = restoredPreferredLyrics?.lines.map(line => line.fullText).join('\n') ?? '';
-    const restoredIsPureMusicNotice = Boolean(restoredPreferredLyrics) && isPureMusicLyricText(restoredLyricText);
-    if (restoredPreferredLyrics && !restoredIsPureMusicNotice) {
+    // The source has landed, so a lyric failure from here on is not a failed restore: reported as one,
+    // session restore would withdraw autoplay and the window handoff would swap the snapshot's old URL
+    // back in over the fresh one. A throw that lands after the listener moved on is stale like any other.
+    try {
+        const cachedLyrics = await getSongCacheWithLegacyMigration<LyricData>('lyric', song, migrateLyricDataRenderHints);
+        if (!isCurrent()) return 'stale';
+        const restoredPreferredLyrics = resolveOnlineLyrics(onlineLyricsState, cachedLyrics);
+        // 恢复出来的「纯音乐」经常只是平台的占位：直接拿它填面板再 return，用户就再也等不到真词。
+        // 落到下面的正常管线，让平台取词和自动最佳匹配有机会把它换掉。
+        const cachedText = restoredPreferredLyrics?.lines.map(line => line.fullText).join('\n') ?? '';
+        const restoredIsPureMusicNotice = Boolean(restoredPreferredLyrics) && isPureMusicLyricText(cachedText);
+        if (restoredPreferredLyrics && !restoredIsPureMusicNotice) {
+            setCurrentSong(prev => {
+                if (!prev || !isSamePlaybackSong(prev, song)) return prev;
+                return {
+                    ...prev,
+                    isPureMusic: onlineLyricsState?.lyricsSource === 'online' && typeof onlineLyricsState.matchedIsPureMusic === 'boolean'
+                        ? onlineLyricsState.matchedIsPureMusic
+                        : isPureMusicLyricText(cachedText),
+                };
+            });
+            setLyrics(restoredPreferredLyrics);
+            return 'restored';
+        }
+
+        const songProviderId = song.sourceRef?.kind === 'online' ? song.sourceRef.providerId : null;
+        const effectiveUserId = songProviderId
+            ? (useOnlineProviderAccountStore.getState().accounts[songProviderId]?.user?.id ?? userId)
+            : userId;
+        const processed = await omni.getLyrics(song, { userId: effectiveUserId });
+        if (!isCurrent()) return 'stale';
+        const resolvedLyrics = resolveOnlineLyrics(onlineLyricsState, processed.lyrics);
         setCurrentSong(prev => {
             if (!prev || !isSamePlaybackSong(prev, song)) return prev;
             return {
                 ...prev,
                 isPureMusic: onlineLyricsState?.lyricsSource === 'online' && typeof onlineLyricsState.matchedIsPureMusic === 'boolean'
                     ? onlineLyricsState.matchedIsPureMusic
-                    : isPureMusicLyricText(restoredLyricText),
+                    : processed.isPureMusic,
             };
         });
-        setLyrics(restoredPreferredLyrics);
-        return true;
+        setLyrics(resolvedLyrics);
+        return 'restored';
+    } catch (error) {
+        if (!isCurrent()) return 'stale';
+        console.warn('[restorePlaybackSourceForSong] Lyrics could not be restored after the source landed', error);
+        return 'restored';
     }
-
-    // A restored pure-music notice is often only a provider placeholder. Do not clear the
-    // lyric panel and stop here: route it through the normal lyric pipeline so the regular
-    // provider fetch and automatic best-match can replace the placeholder with real lyrics.
-    const songProviderId = song.sourceRef?.kind === 'online' ? song.sourceRef.providerId : null;
-    const effectiveUserId = songProviderId
-        ? (useOnlineProviderAccountStore.getState().accounts[songProviderId]?.user?.id ?? userId)
-        : userId;
-    setLyrics(null);
-    await loadOnlineSongLyrics(song, null, effectiveUserId, {
-        isCurrent: () => true,
-        onLyrics: setLyrics,
-        onPureMusicChange: isPureMusic => {
-            setCurrentSong(prev => {
-                if (!prev || !isSamePlaybackSong(prev, song)) return prev;
-                return { ...prev, isPureMusic };
-            });
-        },
-        onStateChange: state => {
-            setCurrentSong(prev => {
-                if (!prev || !isSamePlaybackSong(prev, song)) return prev;
-                return { ...prev, onlineLyricsState: state ?? undefined };
-            });
-        },
-        onDone: () => undefined,
-    });
-    return true;
 };
