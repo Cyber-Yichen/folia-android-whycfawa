@@ -334,7 +334,14 @@ public class FoliaNativePlugin extends Plugin {
                     return;
                 }
             } else {
-                builder.method(requestMethod, body);
+                // OkHttp 的 method() 对 POST / PUT / PATCH 要求非 null 的 body，而调用方经常只带
+                // 参数、正文是空的（酷狗的 everyday_recommend 就把参数全放在 query 里）。补一个
+                // 0 长度 body，否则会直接抛 "method POST must have a request body"。
+                RequestBody effectiveBody = body;
+                if (effectiveBody == null && requiresRequestBody(requestMethod)) {
+                    effectiveBody = RequestBody.create(null, new byte[0]);
+                }
+                builder.method(requestMethod, effectiveBody);
             }
 
             OkHttpClient requestClient = client;
@@ -1078,6 +1085,16 @@ public class FoliaNativePlugin extends Plugin {
         if (ref == null || !ref.startsWith("imported-")) return null;
         if (ref.contains("/") || ref.contains("\\") || ref.contains("..")) return null;
         return new File(directory, ref);
+    }
+
+    /** 与 OkHttp 的 HttpMethod.requiresRequestBody 同一份判定：这几个方法必须有请求体。 */
+    private static boolean requiresRequestBody(String method) {
+        if (method == null) return false;
+        return "POST".equalsIgnoreCase(method)
+            || "PUT".equalsIgnoreCase(method)
+            || "PATCH".equalsIgnoreCase(method)
+            || "PROPPATCH".equalsIgnoreCase(method)
+            || "REPORT".equalsIgnoreCase(method);
     }
 
     private List<JSObject> parseCookieHeader(String header, String domain) {
