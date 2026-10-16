@@ -61,8 +61,28 @@ describe('QQ radio comm', () => {
 
     it('keeps the explicit tmeLoginType when the jar already has one', async () => {
         const { buildQQRadioComm } = await import('@/nativeBridge/api/qq.js');
-        const comm = buildQQRadioComm(`${COOKIE}; tmeLoginType=1`, DEVICE);
-        expect(comm.tmeLoginType).toBe(1);
+        const comm = buildQQRadioComm(COOKIE, DEVICE);
+        // COOKIE 里没有 tmeLoginType，补手机 QQ 扫码通道的 6。
+        expect(comm.tmeLoginType).toBe(6);
+    });
+
+    it('honours an explicit login type override', async () => {
+        const { buildQQRadioComm } = await import('@/nativeBridge/api/qq.js');
+        expect(buildQQRadioComm(`${COOKIE}; tmeLoginType=1`, DEVICE, 6).tmeLoginType).toBe(6);
+        expect(buildQQRadioComm(COOKIE, DEVICE, 1).tmeLoginType).toBe(1);
+    });
+
+    // tmeLoginType 从 cookie 罐读到的值可能是上一条微信会话的残留，所以按本会话的
+    // login_type 优先，并且两种标记都排进候选（失败时换一个再试）。
+    it('prefers the session channel marker over a leftover tmeLoginType', async () => {
+        const { qqRadioLoginTypes } = await import('@/nativeBridge/api/qq.js');
+        // QQ 通道（login_type=1）：即使罐里残留 tmeLoginType=1，也先试 6。
+        expect(qqRadioLoginTypes('login_type=1; tmeLoginType=1').candidates).toEqual([6, 1]);
+        // 微信通道（login_type=2）：先试 1。
+        expect(qqRadioLoginTypes('login_type=2; tmeLoginType=1').candidates).toEqual([1, 6]);
+        // 两个标记都没有：默认手机 QQ 通道。
+        expect(qqRadioLoginTypes('uin=o1').candidates).toEqual([6, 1]);
+        expect(qqRadioLoginTypes('uin=o1; tmeLoginType=1').candidates).toEqual([1, 6]);
     });
 
     it('rebuilds the credential cookie without the o prefix', async () => {

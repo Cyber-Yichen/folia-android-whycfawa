@@ -1851,11 +1851,12 @@ async function getQQRadioDevice() {
  * （JSON 序列化会丢掉 undefined 键）；tmeLoginType 必须补默认值，因为 QQ 扫码登录会把这个
  * cookie 删掉（防止上一条微信会话的 login_type=2 / tmeLoginType=1 串味）。
  */
-function buildQQRadioComm(cookieHeader, device) {
+function buildQQRadioComm(cookieHeader, device, loginTypeOverride) {
   const jar = parseCookieString(cookieHeader);
   const musicId = qqCookieMusicId(cookieHeader);
   const explicit = Number(jar.tmeLoginType);
-  const loginType = Number.isFinite(explicit) && explicit > 0 ? explicit : QQ_MOBILE_LOGIN_TYPE;
+  const loginType = loginTypeOverride
+    ?? (Number.isFinite(explicit) && explicit > 0 ? explicit : QQ_MOBILE_LOGIN_TYPE);
   return {
     ct: 11,
     cv: 14090008,
@@ -1880,6 +1881,26 @@ function buildQQRadioComm(cookieHeader, device) {
 }
 
 /**
+ * 两个通道标记都试一次。`tmeLoginType` 是从 cookie 罐读的，而 QQ 扫码登录会把这个 cookie 删掉
+ * （只写 login_type=1），所以罐里那个值可能是上一条微信会话的残留 —— 带着它就会让服务端把
+ * QQ 凭证按微信解析，正是电台回 1000 的形态。这里按「本会话自己的 login_type」优先，
+ * 失败再用另一个标记试一次，哪个能出歌就用哪个。
+ */
+function qqRadioLoginTypes(cookieHeader) {
+  const jar = parseCookieString(cookieHeader);
+  const channel = Number(jar.login_type);
+  const jarType = Number(jar.tmeLoginType);
+  const primary = channel === 2 ? 1
+    : channel === 1 ? QQ_MOBILE_LOGIN_TYPE
+      : (Number.isFinite(jarType) && jarType > 0 ? jarType : QQ_MOBILE_LOGIN_TYPE);
+  return {
+    channel,
+    jarType,
+    candidates: primary === QQ_MOBILE_LOGIN_TYPE ? [primary, 1] : [primary, QQ_MOBILE_LOGIN_TYPE],
+  };
+}
+
+/**
  * 参考实现对带凭证的 musicu 请求会**重建** Cookie 头，只用四个键，且 uin 是音乐账号 id
  * 的裸值（没有登录时写进去的 `o` 前缀）：
  *   uin=<musicid>; qqmusic_uin=<musicid>; qm_keyst=<key>; qqmusic_key=<key>
@@ -1894,40 +1915,51 @@ function buildQQRadioCookie(cookieHeader) {
   return [`uin=${musicId}`, `qqmusic_uin=${musicId}`, `qm_keyst=${key}`, `qqmusic_key=${key}`].join('; ');
 }
 
-// 导出给单测：这两个纯函数决定电台请求的线上形状，出过三次问题，需要能被钉住。
-export { buildQQRadioComm, buildQQRadioCookie };
+// 导出给单测：这几个纯函数决定电台请求的线上形状，出过多次问题，需要能被钉住。
+export { buildQQRadioComm, buildQQRadioCookie, qqRadioLoginTypes };
 
 /** 私人 FM（猜你喜欢）。上游实测 num 再大也只回 5 首，参数照抄。 */
 export async function handleQQGuessYouLike(cookieHeader) {
   const device = await getQQRadioDevice();
-  const comm = buildQQRadioComm(cookieHeader, device);
-  const result = await qqMusicuCall(
-    'music.radioProxy.MbTrackRadioSvr', 'get_radio_track',
-    { id: 99, firstplay: 1, num: 15 },
-    cookieHeader,
-    comm,
-    { ua: QQ_MUSICU_UA, cookie: buildQQRadioCookie(cookieHeader) },
-  );
-  // 记下上游码与实际发出去的字段：只看到 __foliaBridgeError 时无法区分
-  // 「上游说没登录」和「模块拒了这次请求」。
-  noteLibraryStep('qq', 'guess-you-like:result', {
-    ok: result.ok,
-    code: result.code,
-    subcode: result.subcode,
-    msg: result.msg,
-    loginRequired: result.loginRequired,
-    tracks: Array.isArray(result.data && result.data.tracks) ? result.data.tracks.length : 0,
-    hasMusicId: Boolean(comm.qq),
-    loginType: comm.tmeLoginType,
-    hasDevice: Boolean(comm.OpenUDID),
-  });
-  if (!result.ok) {
-    return result.loginRequired
-      ? { ...qqAuthRequired('guess-you-like'), message: `QQ guess-you-like: login required (code ${result.code})` }
-      : { code: 0, songs: [] };
+  const { channel, jarType, candidates } = qqRadioLoginTypes(cookieHeader);
+  const cookie = buildQQRadioCookie(cookieHeader);
+  let last = null;
+  for (const loginType of candidates) {
+    const comm = buildQQRadioComm(cookieHeader, device, loginType);
+    const result = await qqMusicuCall(
+      'music.radioProxy.MbTrackRadioSvr', 'get_radio_track',
+      { id: 99, firstplay: 1, num: 15 },
+      cookieHeader,
+      comm,
+      { ua: QQ_MUSICU_UA, cookie },
+    );
+    // 记下上游码与实际发出去的字段：只看到 __foliaBridgeError 时无法区分
+    // 「上游说没登录」和「模块拒了这次请求」。
+    noteLibraryStep('qq', 'guess-you-like:result', {
+      ok: result.ok,
+      code: result.code,
+      subcode: result.subcode,
+      msg: result.msg,
+      loginRequired: result.loginRequired,
+      tracks: Array.isArray(result.data && result.data.tracks) ? result.data.tracks.length : 0,
+      hasMusicId: Boolean(comm.qq),
+      loginType,
+      channelLoginType: channel === 2 ? 'wechat' : channel === 1 ? 'qq' : 'none',
+      jarTmeLoginType: Number.isFinite(jarType) ? jarType : 'none',
+      hasDevice: Boolean(comm.OpenUDID),
+    });
+    if (result.ok) {
+      const tracks = Array.isArray(result.data && result.data.tracks) ? result.data.tracks : [];
+      return { code: 0, songs: tracks };
+    }
+    last = result;
+    // 不是「登录失效」就没必要换标记再试。
+    if (!result.loginRequired) return { code: 0, songs: [] };
   }
-  const tracks = Array.isArray(result.data && result.data.tracks) ? result.data.tracks : [];
-  return { code: 0, songs: tracks };
+  return {
+    ...qqAuthRequired('guess-you-like'),
+    message: `QQ guess-you-like: login required (code ${last ? last.code : 'n/a'}, tried loginType ${candidates.join('/')})`,
+  };
 }
 
 /** 每日 30 首。dirid 202 是上游实测的「日推」目录。 */
