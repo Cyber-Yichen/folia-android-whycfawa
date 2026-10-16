@@ -28,6 +28,8 @@ type StubOptions = {
     acceptWrite?: boolean;
     /** 若给出，则写入后关系读数停在这个值，用来模拟「写了但没生效」。 */
     stuckAt?: boolean;
+    /** 账号真实的「我喜欢」目录号（不填表示 GetPlaylistByUin 没给出来）。 */
+    likedDirId?: number;
 };
 
 const installFetchStub = (options: StubOptions = {}) => {
@@ -45,6 +47,12 @@ const installFetchStub = (options: StubOptions = {}) => {
         }
         if (module === 'music.getSession.session') {
             return jsonResponse({ code: 0, req_0: { code: 0, data: { session: { uid: 'DEVICE-UID', sid: 'DEVICE-SID', vkey: 0 } } } });
+        }
+        if (module === 'music.musicasset.PlaylistBaseRead') {
+            return jsonResponse({
+                code: 0,
+                req_0: { code: 0, data: { v_playlist: options.likedDirId ? [{ dirId: options.likedDirId, dirName: '我喜欢' }] : [] } },
+            });
         }
         if (module === 'music.musicasset.SongFavRead') {
             return jsonResponse({ code: 0, req_0: { code: 0, data: { m_fan: { [SONG_MID]: liked } } } });
@@ -68,6 +76,7 @@ const installFetchStub = (options: StubOptions = {}) => {
         call.module === 'music.pf_song_detail_svr'
         || call.module === 'music.musicasset.SongFavRead'
         || call.module === 'music.musicasset.PlaylistDetailWrite'
+        || call.module === 'music.musicasset.PlaylistBaseRead'
         || call.module === 'music.getSession.session'
     ));
     return relevant;
@@ -90,11 +99,33 @@ describe('QQ song like', () => {
         expect(calls().map(call => `${call.module}.${call.method}`)).toEqual([
             'music.pf_song_detail_svr.get_song_detail_yqq',
             'music.musicasset.SongFavRead.IsSongFanByMid',
-            // 写入前先取 android 会话（参考实现的 refreshAndroidSession）。
+            // 写入前先问账号真实的「我喜欢」目录号。
+            'music.musicasset.PlaylistBaseRead.GetPlaylistByUin',
+            // 再取 android 会话（参考实现的 refreshAndroidSession）。
             'music.getSession.session.GetSession',
             'music.musicasset.PlaylistDetailWrite.AddSonglist',
             'music.musicasset.SongFavRead.IsSongFanByMid',
         ]);
+    });
+
+    // 歌单写入一直是查账号真实目录号再写的，唯独红心写死 201；两者不一致时按账号的来。
+    it('writes to the account own liked dir when it is not 201', async () => {
+        const calls = installFetchStub({ likedDirId: 5 });
+        const like = await loadHandler();
+        await like(SONG_ID, SONG_MID, true, COOKIE);
+
+        const writes = calls().filter(call => call.module === 'music.musicasset.PlaylistDetailWrite');
+        expect(writes.length).toBeGreaterThan(0);
+        expect(writes[0].param.dirId).toBe(5);
+    });
+
+    it('falls back to 201 when the account does not report a liked dir', async () => {
+        const calls = installFetchStub();
+        const like = await loadHandler();
+        await like(SONG_ID, SONG_MID, true, COOKIE);
+
+        const writes = calls().filter(call => call.module === 'music.musicasset.PlaylistDetailWrite');
+        expect(writes[0].param.dirId).toBe(201);
     });
 
     // 现场报告里 identity 与 read 都是 code=0，只有 write 回 500026 —— 参考实现是带着

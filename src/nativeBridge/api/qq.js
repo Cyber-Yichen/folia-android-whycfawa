@@ -1098,17 +1098,26 @@ export async function handleQQSongLike(id, mid, like, cookieHeader) {
   if (before.liked === wantLiked) return done('already');
 
   // 3) 写：客户端模块那套 comm。
-  const write = await qqAndroidWriteCall(
-    'music.musicasset.PlaylistDetailWrite',
-    wantLiked ? 'AddSonglist' : 'DelSonglist',
-    { dirId: 201, v_songInfo: [{ songId, songType: 0 }] },
-    cookieHeader,
-  );
-  const writeData = (write.data && typeof write.data === 'object') ? write.data : {};
-  noteLibraryStep('qq', 'song-like:write', {
-    ok: write.ok, code: write.code, subcode: write.subcode,
-    retCode: writeData.retCode, msg: write.msg,
-  });
+  // 3) 写：客户端模块那套 comm。目录号先问账号本身 —— 歌单写入我们一直是查
+  // GetPlaylistByUin 拿真实目录号再写的，唯独红心写死了 201；两者不一致时先按账号的来。
+  const accountDirId = await resolveQQLikedDirId(cookieHeader);
+  const dirIds = [...new Set([accountDirId || 201, 201])];
+  let write = null;
+  let writeData = {};
+  for (const dirId of dirIds) {
+    write = await qqAndroidWriteCall(
+      'music.musicasset.PlaylistDetailWrite',
+      wantLiked ? 'AddSonglist' : 'DelSonglist',
+      { dirId, v_songInfo: [{ songId, songType: 0 }] },
+      cookieHeader,
+    );
+    writeData = (write.data && typeof write.data === 'object') ? write.data : {};
+    noteLibraryStep('qq', 'song-like:write', {
+      ok: write.ok, code: write.code, subcode: write.subcode,
+      retCode: writeData.retCode, msg: write.msg, dirId,
+    });
+    if (write.ok || write.loginRequired) break;
+  }
   if (write.loginRequired) return loginRequired();
   const writeAccepted = write.ok
     && Number(writeData.retCode) === 0
@@ -1134,6 +1143,36 @@ export async function handleQQSongLike(id, mid, like, cookieHeader) {
     writeAccepted ? 'verify-mismatch' : 'write-rejected',
     { retCode: writeData.retCode },
   );
+}
+
+/**
+ * 账号真实的「我喜欢」目录号。
+ *
+ * 歌单写入一直是先 GetPlaylistByUin 查账号真实目录号再写，唯独红心写死 201（旧版收藏目录的
+ * 约定值）。读关系（IsSongFanByMid）不需要目录号、一直是好的，所以这个值从没被验证过 ——
+ * 先把它坐实并记进留痕，两者不一致时按账号的来。
+ */
+async function resolveQQLikedDirId(cookieHeader) {
+  const owner = String(qqCookieMusicId(cookieHeader) || '').trim();
+  if (!owner) return 0;
+  const owned = await qqAndroidMusicuCall(
+    'music.musicasset.PlaylistBaseRead', 'GetPlaylistByUin', { uin: owner }, cookieHeader,
+  );
+  const rows = Array.isArray(owned.data && owned.data.v_playlist) ? owned.data.v_playlist : [];
+  const candidate = rows.find((row) => {
+    const name = String((row && (row.dirName || row.dirname || row.name || row.title)) || '');
+    const dirId = Number(row && row.dirId);
+    if (!Number.isSafeInteger(dirId) || dirId <= 0) return false;
+    return /我喜欢|默认收藏|红心/i.test(name) || dirId === 201;
+  });
+  const dirId = Number(candidate && candidate.dirId);
+  const resolved = Number.isSafeInteger(dirId) && dirId > 0 ? dirId : 0;
+  noteLibraryStep('qq', 'song-like:dir', {
+    rows: rows.length,
+    dirId: resolved,
+    name: String((candidate && (candidate.dirName || candidate.dirname || candidate.name)) || '').slice(0, 24),
+  });
+  return resolved;
 }
 
 function buildQQAuthComm(cookieHeader, extra) {
