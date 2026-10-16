@@ -975,62 +975,6 @@ export async function handleQQSongLikeCheck(ids, cookieHeader) {
   return { provider: 'qq', loggedIn: true, ids, liked };
 }
 
-function qqLikeWriteResult(json) {
-  const block = (json && json.req_0) || {};
-  const data = block.data || {};
-  const code = Number(block.code ?? data.code ?? (json && json.code) ?? 0);
-  if (code === 1000) return { ok: false, loginRequired: true, code, block, data };
-  if (code && code !== 0 && code !== 200) return { ok: false, code, block, data };
-  const business = Number(data.ret ?? data.resultCode ?? data.errCode ?? 0);
-  if (typeof data.result === 'number' && data.result !== 0 && data.result !== 200) {
-    return { ok: false, code: data.result, block, data };
-  }
-  if (business && business !== 0 && business !== 200 && typeof data.result !== 'object') {
-    return { ok: false, code: business, block, data };
-  }
-  const failed = data.v_failedSongId || data.v_failSongId || data.vFailedSongId || data.failedSongIds;
-  if (Array.isArray(failed) && failed.length) return { ok: false, code: business || -1, block, data };
-  return { ok: true, code: code || 0, block, data };
-}
-
-async function qqPlaylistDetailWrite(method, songId, cookieHeader, songType) {
-  const sid = Number(songId);
-  if (!Number.isFinite(sid) || sid <= 0) return null;
-  const json = await qqMusicRequest({
-    comm: buildQQAuthComm(cookieHeader),
-    req_0: {
-      module: 'music.musicasset.PlaylistDetailWrite',
-      method,
-      param: {
-        dirId: 201,
-        v_songInfo: [{ songId: sid, songType: songType == null ? 0 : Number(songType) }],
-      },
-    },
-  }, cookieHeader);
-  return { json, ...qqLikeWriteResult(json) };
-}
-
-async function qqSongFavWrite(method, songId, cookieHeader, songType) {
-  const sid = Number(songId);
-  if (!Number.isFinite(sid) || sid <= 0) return null;
-  const uin = qqCookieUin(cookieHeader);
-  const json = await qqMusicRequest({
-    comm: buildQQAuthComm(cookieHeader),
-    req_0: {
-      module: 'music.musicasset.SongFavWrite',
-      method,
-      param: {
-        uin: Number(uin) || uin,
-        v_uin: Number(uin) || uin,
-        dirId: 201,
-        ids: [sid],
-        songTypes: [songType == null ? 0 : Number(songType)],
-      },
-    },
-  }, cookieHeader);
-  return { json, ...qqLikeWriteResult(json) };
-}
-
 async function qqAddToFavByMid(songMid, cookieHeader) {
   const uin = qqCookieUin(cookieHeader);
   const gtk = qqGtk(cookieHeader);
@@ -1087,87 +1031,108 @@ async function qqDelFromFavById(songId, cookieHeader) {
   return { ok: false, code, body };
 }
 
+/**
+ * 收藏 / 取消收藏单曲。形状照上游 qq-music-api 3.3.1 的 services/user/songLike：
+ *   身份核对（get_song_detail_yqq）→ 读关系（SongFavRead / IsSongFanByMid）→ 已是目标状态直接回
+ *   → 写（PlaylistDetailWrite / AddSonglist|DelSonglist，songType 固定 0）→ 再读一次确认。
+ *
+ * 以前这里发的是**网页 comm**，写的参数还自己加过参考里没有的 songType 13，失败又全被
+ * `catch (_) {}` 吞掉，诊断里只剩一句 __foliaBridgeError。现在改用客户端模块那套
+ * android comm + QQMusic UA，并且每一步都记 code/subcode，失败时能看出卡在哪一步。
+ *
+ * legacy CGI（fcg_music_add2songdir / delbatchsong）降级为兜底，且**必须靠同一套再读确认**才算成功 ——
+ * 它自报成功不算数。
+ */
 export async function handleQQSongLike(id, mid, like, cookieHeader) {
   const status = await getQQLoginStatus(cookieHeader);
   if (!status.loggedIn) return { provider: 'qq', error: 'LOGIN_REQUIRED', loggedIn: false };
   const songMid = String(mid || (isQQSongMid(id) ? id : '') || '').trim();
-  const songId = await resolveQQSongNumericId(isQQSongMid(id) ? '' : id, songMid, cookieHeader);
-  if (!songId && !songMid) return { provider: 'qq', error: 'MISSING_QQ_SONG_ID', loggedIn: true };
+  const songId = Number(await resolveQQSongNumericId(isQQSongMid(id) ? '' : id, songMid, cookieHeader)) || 0;
+  if (!songMid || !songId) return { provider: 'qq', error: 'MISSING_QQ_SONG_ID', loggedIn: true, mid: songMid };
+  const wantLiked = like !== false;
 
-  const fail = (res, wantLiked, extra) => ({
+  const fail = (code, step, extra) => ({
     provider: 'qq',
-    error: (res && res.data && (res.data.msg || res.data.message || res.data.errMsg))
-      || (res && res.block && (res.block.msg || res.block.message || res.block.errMsg))
-      || (res && res.body && (res.body.msg || res.body.message))
-      || (wantLiked ? 'QQ_UNLIKE_FAILED' : 'QQ_LIKE_FAILED'),
+    error: `QQ_${wantLiked ? 'LIKE' : 'UNLIKE'}_FAILED`,
     loggedIn: true,
-    id: songId || '',
+    id: songId,
     mid: songMid,
-    liked: !!wantLiked,
-    code: res && res.code,
+    liked: !wantLiked,
+    code,
+    step,
     ...(extra || {}),
   });
+  const loginRequired = () => ({ provider: 'qq', error: 'LOGIN_REQUIRED', loggedIn: false, mid: songMid });
+  const done = (via) => ({ provider: 'qq', loggedIn: true, id: songId, mid: songMid, liked: wantLiked, code: 0, via });
 
-  if (like !== false) {
-    if (songId) {
-      for (const songType of [0, 13]) {
-        try {
-          const res = await qqPlaylistDetailWrite('AddSonglist', songId, cookieHeader, songType);
-          if (res && res.loginRequired) return { provider: 'qq', error: 'LOGIN_REQUIRED', loggedIn: false, mid: songMid };
-          if (res && res.ok) return { provider: 'qq', loggedIn: true, id: songId, mid: songMid, liked: true, code: res.code || 0, via: 'PlaylistDetailWrite' };
-        } catch (_) {}
-      }
-      for (const songType of [0, 13]) {
-        try {
-          const res = await qqSongFavWrite('AddSong', songId, cookieHeader, songType);
-          if (res && res.loginRequired) return { provider: 'qq', error: 'LOGIN_REQUIRED', loggedIn: false, mid: songMid };
-          if (res && res.ok) return { provider: 'qq', loggedIn: true, id: songId, mid: songMid, liked: true, code: res.code || 0, via: 'SongFavWrite' };
-        } catch (_) {}
-      }
-    }
-    if (songMid) {
-      try {
-        const res = await qqAddToFavByMid(songMid, cookieHeader);
-        if (res && res.loginRequired) return { provider: 'qq', error: 'LOGIN_REQUIRED', loggedIn: false, mid: songMid };
-        if (res && res.ok) return { provider: 'qq', loggedIn: true, id: songId || '', mid: songMid, liked: true, code: 0, via: 'add2songdir' };
-        if (res && !res.ok) return fail(res, false, { mid: songMid, via: 'add2songdir' });
-      } catch (err) {
-        return { provider: 'qq', error: err.message || 'QQ_LIKE_FAILED', loggedIn: true, mid: songMid, liked: false };
-      }
-    }
-    return fail(null, false, { mid: songMid });
+  // 1) 身份核对：mid 与 id 必须指向同一首，对不上就不猜、不写。
+  const detail = await qqAndroidMusicuCall(
+    'music.pf_song_detail_svr', 'get_song_detail_yqq', { song_type: 0, song_mid: songMid }, cookieHeader,
+  );
+  const trackInfo = (detail.data && detail.data.track_info) || {};
+  noteLibraryStep('qq', 'song-like:identity', {
+    ok: detail.ok, code: detail.code, subcode: detail.subcode,
+    matches: Number(trackInfo.id) === songId && String(trackInfo.mid || '') === songMid,
+  });
+  if (!detail.ok) return detail.loginRequired ? loginRequired() : fail(detail.code, 'identity');
+  if (Number(trackInfo.id) !== songId || String(trackInfo.mid || '') !== songMid) {
+    return fail(-1, 'identity-mismatch', { trackId: trackInfo.id, trackMid: trackInfo.mid });
   }
 
-  let delId = songId;
-  if (!delId && songMid) {
-    const catalog = await fetchQQFavCatalog(cookieHeader);
-    if (catalog.midMap && catalog.midMap[songMid] != null) delId = String(catalog.midMap[songMid]);
-  }
-  if (delId) {
-    for (const songType of [0, 13]) {
-      try {
-        const res = await qqPlaylistDetailWrite('DelSonglist', delId, cookieHeader, songType);
-        if (res && res.loginRequired) return { provider: 'qq', error: 'LOGIN_REQUIRED', loggedIn: false, mid: songMid };
-        if (res && res.ok) return { provider: 'qq', loggedIn: true, id: delId, mid: songMid, liked: false, code: res.code || 0, via: 'PlaylistDetailWrite' };
-      } catch (_) {}
-    }
-    for (const songType of [0, 13]) {
-      try {
-        const res = await qqSongFavWrite('DelSong', delId, cookieHeader, songType);
-        if (res && res.loginRequired) return { provider: 'qq', error: 'LOGIN_REQUIRED', loggedIn: false, mid: songMid };
-        if (res && res.ok) return { provider: 'qq', loggedIn: true, id: delId, mid: songMid, liked: false, code: res.code || 0, via: 'SongFavWrite' };
-      } catch (_) {}
-    }
-    try {
-      const res = await qqDelFromFavById(delId, cookieHeader);
-      if (res && res.loginRequired) return { provider: 'qq', error: 'LOGIN_REQUIRED', loggedIn: false, mid: songMid };
-      if (res && res.ok) return { provider: 'qq', loggedIn: true, id: delId, mid: songMid, liked: false, code: 0, via: 'delbatchsong' };
-      if (res && !res.ok) return fail(res, true, { id: delId, via: 'delbatchsong' });
-    } catch (err) {
-      return { provider: 'qq', error: err.message || 'QQ_UNLIKE_FAILED', loggedIn: true, mid: songMid, liked: true };
-    }
-  }
-  return fail(null, true, { mid: songMid, id: delId || songId || '', error: 'FAVORITE_ITEM_NOT_FOUND' });
+  // 2) 读当前关系（写完也用它确认）。
+  const readLiked = async () => {
+    const res = await qqAndroidMusicuCall(
+      'music.musicasset.SongFavRead', 'IsSongFanByMid', { v_songMid: [songMid] }, cookieHeader,
+    );
+    const fan = (res.data && res.data.m_fan) || {};
+    const value = typeof fan[songMid] === 'boolean' ? fan[songMid] : null;
+    noteLibraryStep('qq', 'song-like:read', { ok: res.ok, code: res.code, subcode: res.subcode, liked: value });
+    if (!res.ok) return { ok: false, loginRequired: res.loginRequired, code: res.code };
+    if (value === null) return { ok: false, code: -1 };
+    return { ok: true, liked: value };
+  };
+
+  const before = await readLiked();
+  if (!before.ok) return before.loginRequired ? loginRequired() : fail(before.code, 'read');
+  if (before.liked === wantLiked) return done('already');
+
+  // 3) 写：客户端模块那套 comm。
+  const write = await qqAndroidMusicuCall(
+    'music.musicasset.PlaylistDetailWrite',
+    wantLiked ? 'AddSonglist' : 'DelSonglist',
+    { dirId: 201, v_songInfo: [{ songId, songType: 0 }] },
+    cookieHeader,
+  );
+  const writeData = (write.data && typeof write.data === 'object') ? write.data : {};
+  noteLibraryStep('qq', 'song-like:write', {
+    ok: write.ok, code: write.code, subcode: write.subcode,
+    retCode: writeData.retCode, msg: write.msg,
+  });
+  if (write.loginRequired) return loginRequired();
+  const writeAccepted = write.ok
+    && Number(writeData.retCode) === 0
+    && writeData.result
+    && typeof writeData.result === 'object';
+  const afterPrimary = await readLiked();
+  if (writeAccepted && afterPrimary.ok && afterPrimary.liked === wantLiked) return done('PlaylistDetailWrite');
+
+  // 4) 兜底：legacy CGI，成功与否一律靠再读确认，避免它自报成功其实没生效。
+  const legacy = wantLiked
+    ? await qqAddToFavByMid(songMid, cookieHeader).catch((error) => ({ ok: false, error: String(error && error.message || error) }))
+    : await qqDelFromFavById(songId, cookieHeader).catch((error) => ({ ok: false, error: String(error && error.message || error) }));
+  const afterLegacy = await readLiked();
+  noteLibraryStep('qq', 'song-like:legacy', {
+    ok: Boolean(legacy && legacy.ok),
+    code: legacy && legacy.code,
+    confirmed: afterLegacy.ok ? afterLegacy.liked === wantLiked : 'read-failed',
+  });
+  if (afterLegacy.ok && afterLegacy.liked === wantLiked) return done(wantLiked ? 'add2songdir' : 'delbatchsong');
+
+  return fail(
+    write.ok ? (afterPrimary.ok ? -1 : afterPrimary.code) : write.code,
+    writeAccepted ? 'verify-mismatch' : 'write-rejected',
+    { retCode: writeData.retCode },
+  );
 }
 
 function buildQQAuthComm(cookieHeader, extra) {
@@ -1842,10 +1807,12 @@ async function getQQRadioDevice() {
 }
 
 /**
- * 电台（私人 FM）用的 comm。参考实现对「带凭证的 musicu 请求」统一用 android 形态
- * （ct=11、cv/v=14090008、chid、tmeAppID、qq=音乐账号 id、authst=musickey、tmeLoginType，
- * 外加一整套设备身份），而我们的 comm 是网页形态（ct=19/24、没有 qq、没有设备字段）。
- * 日推与推荐歌单用网页 comm 也能过，但电台模块不认，会回 code 1000（登录失效）。
+ * 电台（私人 FM）与 musicasset 写入模块共用的 android 形态 comm。
+ *
+ * 参考实现对「带凭证的 musicu 请求」统一用 android 形态（ct=11、cv/v=14090008、chid、
+ * tmeAppID、qq=音乐账号 id、authst、tmeLoginType，外加一整套设备身份），而我们的 comm 是
+ * 网页形态（ct=19/24、没有 qq、没有设备字段）。电台与收藏写入这类「客户端模块」只认前者 ——
+ * 网页 comm 能过的是日推与推荐歌单那种查询接口。
  *
  * 另外两点按参考实现对齐：android comm **不带 uin**（只带 qq），所以这里显式把 uin 置空
  * （JSON 序列化会丢掉 undefined 键）；tmeLoginType 必须补默认值，因为 QQ 扫码登录会把这个
@@ -1898,6 +1865,22 @@ function qqRadioLoginTypes(cookieHeader) {
     jarType,
     candidates: primary === QQ_MOBILE_LOGIN_TYPE ? [primary, 1] : [primary, QQ_MOBILE_LOGIN_TYPE],
   };
+}
+
+/**
+ * 「客户端模块」的 musicu 调用：android comm + QQMusic UA + 重建后的凭据 cookie。
+ *
+ * 参考实现给这些模块统一用 createSessionMusicuClient（同一套形态），我们以前只有查询接口
+ * 能过、电台与收藏写入都失败。设备身份按需生成并持久化，所以这里 await 一次即可。
+ */
+async function qqAndroidMusicuCall(module, method, param, cookieHeader) {
+  const device = await getQQRadioDevice();
+  const { candidates } = qqRadioLoginTypes(cookieHeader);
+  return qqMusicuCall(
+    module, method, param, cookieHeader,
+    buildQQRadioComm(cookieHeader, device, candidates[0]),
+    { ua: QQ_MUSICU_UA, cookie: buildQQRadioCookie(cookieHeader) },
+  );
 }
 
 /**
@@ -2038,8 +2021,8 @@ export async function handleQQPlaylistTracksWrite(input, cookieHeader) {
     || songs.length === 0 || songs.length > 100) {
     return { __foliaBridgeError: 'UNSUPPORTED', message: 'QQ playlist tracks: bad input' };
   }
-  const uin = qqCookieUin(cookieHeader);
-  if (!uin) return qqAuthRequired('playlist-tracks');
+  const owner = String(qqCookieMusicId(cookieHeader) || '').trim();
+  if (!owner) return qqAuthRequired('playlist-tracks');
   const vSongInfo = songs.map((song) => ({
     songId: Number(song && song.id),
     songType: Number(song && song.type) || 0,
@@ -2048,9 +2031,9 @@ export async function handleQQPlaylistTracksWrite(input, cookieHeader) {
     return { __foliaBridgeError: 'UNSUPPORTED', message: 'QQ playlist tracks: bad song id' };
   }
 
-  const owned = await qqMusicuCall(
+  const owned = await qqAndroidMusicuCall(
     'music.musicasset.PlaylistBaseRead', 'GetPlaylistByUin',
-    { uin: Number(uin) || uin },
+    { uin: owner },
     cookieHeader,
   );
   if (!owned.ok) return owned.loginRequired ? qqAuthRequired('playlist-tracks') : { code: 0, changed: false };
@@ -2060,7 +2043,7 @@ export async function handleQQPlaylistTracksWrite(input, cookieHeader) {
   if (!playlist || !Number.isSafeInteger(dirId) || dirId < 1 || dirId >= 200) return { code: 0, changed: false };
   if (playlist.dirType !== undefined && Number(playlist.dirType) !== 0) return { code: 0, changed: false };
 
-  const write = await qqMusicuCall(
+  const write = await qqAndroidMusicuCall(
     'music.musicasset.PlaylistDetailWrite',
     op === 'add' ? 'AddSonglist' : 'DelSonglist',
     { dirId, v_songInfo: vSongInfo },
@@ -2084,18 +2067,26 @@ export async function handleQQPlaylistSubscribe(input, cookieHeader) {
   if (!Number.isSafeInteger(tid) || tid <= 0) {
     return { __foliaBridgeError: 'UNSUPPORTED', message: 'QQ playlist subscribe: bad tid' };
   }
-  const uin = qqCookieUin(cookieHeader);
-  if (!uin) return qqAuthRequired('playlist-subscribe');
-  const result = await qqMusicuCall(
+  // uin 用 str_musicid 的裸值：qqCookieUin 是带 `o` 前缀的 o002774749，参考实现从不拿它当 uin。
+  const owner = String(qqCookieMusicId(cookieHeader) || '').trim();
+  if (!owner) return qqAuthRequired('playlist-subscribe');
+  const result = await qqAndroidMusicuCall(
     'music.musicasset.PlaylistFavWrite',
     subscribed ? 'FavPlaylist' : 'CancelFavPlaylist',
-    { uin: Number(uin) || uin, v_playlistId: [tid] },
+    { uin: owner, v_playlistId: [tid] },
     cookieHeader,
   );
   if (!result.ok) {
     return result.loginRequired
       ? qqAuthRequired('playlist-subscribe')
       : qqBridgeFailure('playlist-subscribe', result.code);
+  }
+  // 上游用 v_failedPlaylistId 报告逐个失败；回了 result 0 但列表非空就是没成功。
+  const data = result.data && typeof result.data === 'object' ? result.data : {};
+  const failed = Array.isArray(data.v_failedPlaylistId) ? data.v_failedPlaylistId : [];
+  noteLibraryStep('qq', 'playlist-subscribe:write', { result: data.result, failed: failed.length });
+  if (Number(data.result) !== 0 || failed.length > 0) {
+    return qqBridgeFailure('playlist-subscribe', data.result);
   }
   return { code: 0, subscribed };
 }
@@ -2107,9 +2098,14 @@ export async function handleQQPlaylistSubscribe(input, cookieHeader) {
 export async function handleQQSubscriptionStatus(type, ids, cookieHeader) {
   const requested = String(ids || '').split(',').map((id) => id.trim()).filter(Boolean);
   if (requested.length === 0 || requested.length > 100) return { code: 0, items: [] };
-  const uin = qqCookieUin(cookieHeader);
-  if (!uin) return qqAuthRequired('subscription-status');
+  const owner = String(qqCookieMusicId(cookieHeader) || '').trim();
+  if (!owner) return qqAuthRequired('subscription-status');
 
+  // 三类各有自己的参数形态（上游 STATUS_PROTOCOLS）：歌单只送 v_tid、专辑要 uin 的数字形态、
+  // 单曲只送 v_songMid。以前歌单和专辑都塞了带 `o` 前缀的 uin。
+  const statusUin = /^\d{1,19}$/.test(owner) && BigInt(owner) <= BigInt(Number.MAX_SAFE_INTEGER)
+    ? Number(owner)
+    : owner;
   const protocol = type === 'playlist'
     ? {
       module: 'music.musicasset.PlaylistFavRead',
@@ -2119,11 +2115,11 @@ export async function handleQQSubscriptionStatus(type, ids, cookieHeader) {
     : {
       module: 'music.musicasset.AlbumFavRead',
       method: 'IsAlbumFan',
-      param: { uin: Number(uin) || uin, v_albumMid: requested },
+      param: { uin: statusUin, v_albumMid: requested },
     };
   if (protocol.param.v_tid && protocol.param.v_tid.length === 0) return { code: 0, items: [] };
 
-  const result = await qqMusicuCall(protocol.module, protocol.method, protocol.param, cookieHeader);
+  const result = await qqAndroidMusicuCall(protocol.module, protocol.method, protocol.param, cookieHeader);
   if (!result.ok) {
     return result.loginRequired ? qqAuthRequired('subscription-status') : { code: 0, items: [] };
   }
@@ -2162,7 +2158,14 @@ export async function handleQQSongLikeWrite(input, cookieHeader) {
 
 /**
  * 收藏 / 取消收藏专辑（上游 qq-music-api 3.3.1 的 user_album_subscribe），按专辑 mid 送。
- * 已处于目标状态就直接回，不写；写完按服务端的 result 与 v_failed* 判定是否真的成功。
+ *
+ * 形状照参考实现：
+ *   读关系（AlbumFavRead / IsAlbumFan，uin 用 **number** 形态）→ 已是目标状态直接回
+ *   → 写（AlbumFavWrite / FavAlbum|CancelFavAlbum，uin 用 **string** 形态）→ 再读一次确认。
+ *
+ * 两处以前是错的：一是 uin 取了 `qqCookieUin` 的值，而那是带 `o` 前缀的 `o002774749`；
+ * 参考实现用的是 str_musicid 的裸数字（它的注释写了「不从已经失真的 number 回建账号」）。
+ * 二是发的是网页 comm —— 这是 musicasset 客户端模块，认的是 android comm。
  */
 export async function handleQQAlbumSubscribe(input, cookieHeader) {
   const albumMid = String((input && input.id) || '').trim();
@@ -2170,33 +2173,50 @@ export async function handleQQAlbumSubscribe(input, cookieHeader) {
   if (!/^[A-Za-z0-9]{1,64}$/.test(albumMid)) {
     return { __foliaBridgeError: 'UNSUPPORTED', message: 'QQ album subscribe: bad album mid' };
   }
-  const uin = qqCookieUin(cookieHeader);
-  if (!uin) return qqAuthRequired('album-subscribe');
-  const account = Number(uin) || uin;
+  const owner = String(qqCookieMusicId(cookieHeader) || '').trim();
+  if (!/^\d{1,19}$/.test(owner) || BigInt(owner) === 0n) return qqAuthRequired('album-subscribe');
+  // 只在安全范围内转 number，超出就沿用字符串（与参考实现同一判断）。
+  const statusUin = BigInt(owner) <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(owner) : owner;
 
-  const read = await qqMusicuCall(
-    'music.musicasset.AlbumFavRead', 'IsAlbumFan',
-    { uin: account, v_albumMid: [albumMid] },
-    cookieHeader,
-  );
-  if (!read.ok) {
-    return read.loginRequired ? qqAuthRequired('album-subscribe') : qqBridgeFailure('album-subscribe', read.code);
+  const read = async () => {
+    const res = await qqAndroidMusicuCall(
+      'music.musicasset.AlbumFavRead', 'IsAlbumFan', { uin: statusUin, v_albumMid: [albumMid] }, cookieHeader,
+    );
+    const fan = (res.data && res.data.m_fan) || {};
+    const value = typeof fan[albumMid] === 'boolean' ? fan[albumMid] : null;
+    noteLibraryStep('qq', 'album-subscribe:read', { ok: res.ok, code: res.code, subcode: res.subcode, subscribed: value });
+    if (!res.ok) return { ok: false, loginRequired: res.loginRequired, code: res.code };
+    if (value === null) return { ok: false, code: -1 };
+    return { ok: true, subscribed: value };
+  };
+
+  const before = await read();
+  if (!before.ok) {
+    return before.loginRequired ? qqAuthRequired('album-subscribe') : qqBridgeFailure('album-subscribe', before.code);
   }
-  const fan = read.data && read.data.m_fan && typeof read.data.m_fan === 'object' ? read.data.m_fan : {};
-  if (fan[albumMid] === subscribed) return { code: 0, subscribed };
+  if (before.subscribed === subscribed) return { code: 0, subscribed };
 
-  const write = await qqMusicuCall(
+  const write = await qqAndroidMusicuCall(
     'music.musicasset.AlbumFavWrite',
     subscribed ? 'FavAlbum' : 'CancelFavAlbum',
-    { uin: account, v_albumMid: [albumMid] },
+    { uin: owner, v_albumMid: [albumMid] },
     cookieHeader,
   );
-  if (!write.ok) {
-    return write.loginRequired ? qqAuthRequired('album-subscribe') : qqBridgeFailure('album-subscribe', write.code);
-  }
-  const data = write.data && typeof write.data === 'object' ? write.data : {};
+  const data = (write.data && typeof write.data === 'object') ? write.data : {};
   const failed = (Array.isArray(data.v_failedAlbumId) && data.v_failedAlbumId.length > 0)
     || (Array.isArray(data.v_failedAlbumMid) && data.v_failedAlbumMid.length > 0);
+  noteLibraryStep('qq', 'album-subscribe:write', {
+    ok: write.ok, code: write.code, subcode: write.subcode, result: data.result, failed,
+  });
+  if (write.loginRequired) return qqAuthRequired('album-subscribe');
+  if (!write.ok) return qqBridgeFailure('album-subscribe', write.code);
   if (Number(data.result) !== 0 || failed) return qqBridgeFailure('album-subscribe', data.result);
+
+  // 写接口回成功不等于真的生效，再读一次确认（上游同此）。
+  const after = await read();
+  if (!after.ok || after.subscribed !== subscribed) {
+    noteLibraryStep('qq', 'album-subscribe:verify', { ok: after.ok, subscribed: after.subscribed });
+    return qqBridgeFailure('album-subscribe', after.code);
+  }
   return { code: 0, subscribed };
 }
