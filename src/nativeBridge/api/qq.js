@@ -1961,3 +1961,65 @@ export async function handleQQSubscriptionStatus(type, ids, cookieHeader) {
     })),
   };
 }
+
+/**
+ * 红心 / 取消红心（上游 qq-music-api 3.3.1 的 user_song_like）。
+ * 后端要数字 id 与 songmid 一起核对；只有回包的 liked 对上目标值才算成功，结果不明就报错，
+ * 不假装写入成功（写入可能已经生效，上层据此不会重送）。
+ */
+export async function handleQQSongLikeWrite(input, cookieHeader) {
+  const song = (input && input.song) || {};
+  const songId = Number(song.id);
+  const songMid = String(song.mid || '').trim();
+  const liked = (input && input.liked) === true || String(input && input.liked) === 'true';
+  if (!Number.isSafeInteger(songId) || songId <= 0 || !isQQSongMid(songMid)) {
+    return { __foliaBridgeError: 'UNSUPPORTED', message: 'QQ song like: bad input' };
+  }
+  const result = await handleQQSongLike(songId, songMid, liked, cookieHeader);
+  if (result && result.error === 'LOGIN_REQUIRED') return qqAuthRequired('song-like');
+  if (!result || result.error || result.liked !== liked) {
+    return qqBridgeFailure('song-like', result && result.code);
+  }
+  return { code: 0, liked };
+}
+
+/**
+ * 收藏 / 取消收藏专辑（上游 qq-music-api 3.3.1 的 user_album_subscribe），按专辑 mid 送。
+ * 已处于目标状态就直接回，不写；写完按服务端的 result 与 v_failed* 判定是否真的成功。
+ */
+export async function handleQQAlbumSubscribe(input, cookieHeader) {
+  const albumMid = String((input && input.id) || '').trim();
+  const subscribed = (input && input.subscribed) === true || String(input && input.subscribed) === 'true';
+  if (!/^[A-Za-z0-9]{1,64}$/.test(albumMid)) {
+    return { __foliaBridgeError: 'UNSUPPORTED', message: 'QQ album subscribe: bad album mid' };
+  }
+  const uin = qqCookieUin(cookieHeader);
+  if (!uin) return qqAuthRequired('album-subscribe');
+  const account = Number(uin) || uin;
+
+  const read = await qqMusicuCall(
+    'music.musicasset.AlbumFavRead', 'IsAlbumFan',
+    { uin: account, v_albumMid: [albumMid] },
+    cookieHeader,
+  );
+  if (!read.ok) {
+    return read.loginRequired ? qqAuthRequired('album-subscribe') : qqBridgeFailure('album-subscribe', read.code);
+  }
+  const fan = read.data && read.data.m_fan && typeof read.data.m_fan === 'object' ? read.data.m_fan : {};
+  if (fan[albumMid] === subscribed) return { code: 0, subscribed };
+
+  const write = await qqMusicuCall(
+    'music.musicasset.AlbumFavWrite',
+    subscribed ? 'FavAlbum' : 'CancelFavAlbum',
+    { uin: account, v_albumMid: [albumMid] },
+    cookieHeader,
+  );
+  if (!write.ok) {
+    return write.loginRequired ? qqAuthRequired('album-subscribe') : qqBridgeFailure('album-subscribe', write.code);
+  }
+  const data = write.data && typeof write.data === 'object' ? write.data : {};
+  const failed = (Array.isArray(data.v_failedAlbumId) && data.v_failedAlbumId.length > 0)
+    || (Array.isArray(data.v_failedAlbumMid) && data.v_failedAlbumMid.length > 0);
+  if (Number(data.result) !== 0 || failed) return qqBridgeFailure('album-subscribe', data.result);
+  return { code: 0, subscribed };
+}

@@ -38,6 +38,8 @@ import {
   handleQQPlaylistTracksWrite,
   handleQQPlaylistSubscribe,
   handleQQSubscriptionStatus,
+  handleQQSongLikeWrite,
+  handleQQAlbumSubscribe,
 } from './qq.js';
 import {
   qqWechatGetLoginQr,
@@ -997,6 +999,13 @@ async function routeFoliaQqRequest(operation, params, segments, url, cookie) {
       firstValue(params.ids, ''),
       cookie,
     );
+  }
+  // 红心与收藏专辑（qq-music-api 3.3.1）：body 已经在 mergeOperationParams 里并进 params
+  if (operation === 'user_song_like') {
+    return await handleQQSongLikeWrite(params, cookie);
+  }
+  if (operation === 'user_album_subscribe') {
+    return await handleQQAlbumSubscribe(params, cookie);
   }
 
   return {
