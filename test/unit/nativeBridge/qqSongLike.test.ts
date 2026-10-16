@@ -33,14 +33,14 @@ type StubOptions = {
 };
 
 const installFetchStub = (options: StubOptions = {}) => {
-    const calls: Array<{ module: string; method: string; comm: Record<string, unknown>; param: Record<string, unknown>; cookie: string; ua: string }> = [];
+    const calls: Array<{ url: string; module: string; method: string; comm: Record<string, unknown>; param: Record<string, unknown>; cookie: string; ua: string }> = [];
     let liked = false;
-    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
         const payload = JSON.parse(String(init?.body || '{}'));
         const module = String(payload?.req_0?.module || '');
         const method = String(payload?.req_0?.method || '');
         const headers = (init?.headers || {}) as Record<string, string>;
-        calls.push({ module, method, comm: payload.comm || {}, param: payload?.req_0?.param || {}, cookie: headers.Cookie || '', ua: headers['User-Agent'] || '' });
+        calls.push({ url: String(url), module, method, comm: payload.comm || {}, param: payload?.req_0?.param || {}, cookie: headers.Cookie || '', ua: headers['User-Agent'] || '' });
 
         if (module === 'music.pf_song_detail_svr') {
             return jsonResponse({ code: 0, req_0: { code: 0, data: { track_info: { id: SONG_ID, mid: SONG_MID } } } });
@@ -98,12 +98,15 @@ describe('QQ song like', () => {
         expect(result).toMatchObject({ loggedIn: true, liked: true, via: 'PlaylistDetailWrite' });
         expect(calls().map(call => `${call.module}.${call.method}`)).toEqual([
             'music.pf_song_detail_svr.get_song_detail_yqq',
+            // 读当前关系
             'music.musicasset.SongFavRead.IsSongFanByMid',
-            // 写入前先问账号真实的「我喜欢」目录号。
+            // 先走 legacy CGI（c.y.qq.com，不在这个过滤里），再读一次确认它有没有生效
+            'music.musicasset.SongFavRead.IsSongFanByMid',
+            // 没生效才走 musicasset：先问账号真实的「我喜欢」目录号，再取 android 会话
             'music.musicasset.PlaylistBaseRead.GetPlaylistByUin',
-            // 再取 android 会话（参考实现的 refreshAndroidSession）。
             'music.getSession.session.GetSession',
             'music.musicasset.PlaylistDetailWrite.AddSonglist',
+            // 写完再读确认
             'music.musicasset.SongFavRead.IsSongFanByMid',
         ]);
     });
@@ -148,6 +151,22 @@ describe('QQ song like', () => {
         expect(sessionCall.param).toEqual({ uid: '', vkey: 0, caller: 0 });
         expect(sessionCall.comm.authst).toBeUndefined();
         expect(sessionCall.comm.tmeLoginType).toBeUndefined();
+    });
+
+    // g_tk 是 QQ 网页 CGI 的 CSRF token，算法只认 skey/p_skey。以前拿 musickey（qm_keyst）
+    // 去算，得到的是错的 g_tk，CGI 直接回 403；没有 skey 时该用 5381（公开实现就固定用它）。
+    it('sends the legacy CGI with g_tk=5381 when the session has no skey', async () => {
+        installFetchStub();
+        const like = await loadHandler();
+        await like(SONG_ID, SONG_MID, true, COOKIE);
+
+        // legacy 走 c.y.qq.com（不在 relevant 过滤里），直接看 fetch 的实参。
+        const urls = vi.mocked(fetch).mock.calls.map(([url]) => String(url));
+        const legacy = urls.find(url => url.includes('fcg_music_add2songdir'));
+        expect(legacy).toBeDefined();
+        expect(legacy).toContain('g_tk=5381');
+        expect(legacy).toContain('hostUin=0');
+        expect(legacy).toContain('typelist=13');
     });
 
     it('sends the android comm, the QQMusic UA and the rebuilt credential cookie', async () => {

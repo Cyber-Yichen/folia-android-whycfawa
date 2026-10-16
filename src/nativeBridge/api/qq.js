@@ -888,9 +888,17 @@ async function resolveQQSongNumericId(id, mid, cookieHeader) {
   return songId;
 }
 
+/**
+ * QQ 网页 CGI 的 g_tk（bkn）。
+ *
+ * 算法只认 `skey` / `p_skey` —— 那是 QQ 登录的 CSRF token。以前这里拿 `qm_keyst` /
+ * `qqmusic_key`（musickey，完全是另一套东西）去算，得到的是一个**错误的** g_tk，CGI 直接回
+ * 403（现场 legacy 兜底那条 403 就是它）。没有 skey 时按惯例用 5381（正好等于 hash33("")），
+ * 公开实现 jsososo/QQMusicApi 就是固定用这个值。
+ */
 function qqGtk(cookieHeader) {
   const obj = parseCookieString(cookieHeader);
-  const key = obj.qm_keyst || obj.qqmusic_key || obj.skey || obj.p_skey || '';
+  const key = obj.p_skey || obj.skey || '';
   if (!key) return 5381;
   let hash = 5381;
   for (let i = 0; i < key.length; i++) {
@@ -992,7 +1000,8 @@ async function qqAddToFavByMid(songMid, cookieHeader) {
     utf8: 1,
     g_tk: gtk,
     loginUin: uin,
-    hostUin: uin,
+    // 公开实现（jsososo/QQMusicApi）这个接口固定 hostUin=0；填自己的 uin 会被当成越权操作。
+    hostUin: 0,
     format: 'json',
   }, cookieHeader);
   const code = Number(body && (body.code ?? body.ret ?? body.retCode ?? 0));
@@ -1008,7 +1017,8 @@ async function qqDelFromFavById(songId, cookieHeader) {
   if (!id) return null;
   const body = await qqGetJSON('https://c.y.qq.com/qzone/fcgi-bin/fcg_music_delbatchsong.fcg', {
     loginUin: uin,
-    hostUin: uin,
+    // 与公开实现一致：hostUin 固定 0（填自己的账号会被当成越权）。
+    hostUin: 0,
     uin,
     dirid: 201,
     ids: id,
@@ -1097,9 +1107,25 @@ export async function handleQQSongLike(id, mid, like, cookieHeader) {
   if (!before.ok) return before.loginRequired ? loginRequired() : fail(before.code, 'read');
   if (before.liked === wantLiked) return done('already');
 
-  // 3) 写：客户端模块那套 comm。
-  // 3) 写：客户端模块那套 comm。目录号取账号自己的「我喜欢」目录（现场报告里就是 201，
-  // 与参考实现写死的值一致），只发一次 —— 失败时不要再叠加重试，那只会放大请求。
+  // 3) 先走 legacy CGI（fcg_music_add2songdir / delbatchsong）。
+  //
+  // 顺序是证据驱动的：公开实现 jsososo/QQMusicApi 的「加入我喜欢」就是这条 CGI + g_tk=5381，
+  // 而 musicasset 的 PlaylistDetailWrite 在这台机器/这个账号上一直回业务码 500026
+  // （凭证、设备、指纹、会话、目录号全部对齐之后仍然如此）。CGI 自报成功不算数 ——
+  // 一律靠再读关系确认。
+  const legacy = wantLiked
+    ? await qqAddToFavByMid(songMid, cookieHeader).catch((error) => ({ ok: false, error: String(error && error.message || error) }))
+    : await qqDelFromFavById(songId, cookieHeader).catch((error) => ({ ok: false, error: String(error && error.message || error) }));
+  const afterLegacy = await readLiked();
+  noteLibraryStep('qq', 'song-like:legacy', {
+    ok: Boolean(legacy && legacy.ok),
+    code: legacy && legacy.code,
+    confirmed: afterLegacy.ok ? afterLegacy.liked === wantLiked : 'read-failed',
+  });
+  if (afterLegacy.ok && afterLegacy.liked === wantLiked) return done(wantLiked ? 'add2songdir' : 'delbatchsong');
+
+  // 4) 再试 musicasset 的写入。目录号取账号自己的「我喜欢」目录（现场报告里就是 201），
+  // 只发一次 —— 失败时不要再叠加重试，那只会放大请求。
   const accountDirId = await resolveQQLikedDirId(cookieHeader);
   const write = await qqAndroidWriteCall(
     'music.musicasset.PlaylistDetailWrite',
@@ -1120,22 +1146,10 @@ export async function handleQQSongLike(id, mid, like, cookieHeader) {
   const afterPrimary = await readLiked();
   if (writeAccepted && afterPrimary.ok && afterPrimary.liked === wantLiked) return done('PlaylistDetailWrite');
 
-  // 4) 兜底：legacy CGI，成功与否一律靠再读确认，避免它自报成功其实没生效。
-  const legacy = wantLiked
-    ? await qqAddToFavByMid(songMid, cookieHeader).catch((error) => ({ ok: false, error: String(error && error.message || error) }))
-    : await qqDelFromFavById(songId, cookieHeader).catch((error) => ({ ok: false, error: String(error && error.message || error) }));
-  const afterLegacy = await readLiked();
-  noteLibraryStep('qq', 'song-like:legacy', {
-    ok: Boolean(legacy && legacy.ok),
-    code: legacy && legacy.code,
-    confirmed: afterLegacy.ok ? afterLegacy.liked === wantLiked : 'read-failed',
-  });
-  if (afterLegacy.ok && afterLegacy.liked === wantLiked) return done(wantLiked ? 'add2songdir' : 'delbatchsong');
-
   return fail(
     write.ok ? (afterPrimary.ok ? -1 : afterPrimary.code) : write.code,
     writeAccepted ? 'verify-mismatch' : 'write-rejected',
-    { retCode: writeData.retCode },
+    { retCode: writeData.retCode, legacyCode: legacy && legacy.code },
   );
 }
 
