@@ -420,13 +420,13 @@ function mapQQTrack(track, fallback) {
   };
 }
 
-async function qqMusicRequest(payload, cookieHeader) {
+async function qqMusicRequest(payload, cookieHeader, ua) {
   const resp = await fetch(`${QQ_MUSICU_URL}?format=json`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
       Referer: 'https://y.qq.com/',
-      'User-Agent': UA,
+      'User-Agent': ua || UA,
       Cookie: cookieHeader || '',
     },
     body: JSON.stringify(payload),
@@ -1757,11 +1757,11 @@ function qqMusicuRead(json) {
   return { ok: true, loginRequired: false, code: 0, data: block.data, subcode, msg };
 }
 
-async function qqMusicuCall(module, method, param, cookieHeader, extraComm) {
+async function qqMusicuCall(module, method, param, cookieHeader, extraComm, options = {}) {
   const json = await qqMusicRequest({
     comm: buildQQAuthComm(cookieHeader, extraComm),
     req_0: { module, method, param },
-  }, cookieHeader);
+  }, options.cookie || cookieHeader, options.ua);
   return qqMusicuRead(json);
 }
 
@@ -1788,17 +1788,70 @@ function qqCookieMusicId(cookieHeader) {
 
 /** 手机 QQ 扫码通道的 tmeLoginType；微信通道是 1（参考实现的 MOBILE_LOGIN_TYPE / WECHAT_LOGIN_TYPE）。 */
 const QQ_MOBILE_LOGIN_TYPE = 6;
+/** 带凭证的 musicu 请求用的 UA；参考实现固定发这个，我们以前发的是浏览器 UA。 */
+const QQ_MUSICU_UA = 'QQMusic 14090008(android 10)';
+const QQ_RADIO_DEVICE_KEY = 'qqRadioDevice';
+
+function qqRandomHex(length) {
+  const bytes = new Uint8Array(Math.ceil(length / 2));
+  (globalThis.crypto || window.crypto).getRandomValues(bytes);
+  let out = '';
+  for (const byte of bytes) out += byte.toString(16).padStart(2, '0');
+  return out.slice(0, length);
+}
+
+function qqRandomDigits(length) {
+  const bytes = new Uint8Array(length);
+  (globalThis.crypto || window.crypto).getRandomValues(bytes);
+  let out = '';
+  for (const byte of bytes) out += String(byte % 10);
+  return out;
+}
+
+let qqRadioDeviceCache = null;
+
+/**
+ * 电台请求要一套**稳定**的合成设备身份。参考实现的 android comm 一直带
+ * OpenUDID / aid / os_ver / phonetype / rom 这些字段，并在首次使用时生成后持久化。
+ * 每次随机会让服务端把每次请求都当成新设备 —— 电台是设备维度的推荐服务，这本身就可能是拒绝理由。
+ */
+async function getQQRadioDevice() {
+  if (qqRadioDeviceCache) return qqRadioDeviceCache;
+  try {
+    const stored = await chrome.storage.local.get([QQ_RADIO_DEVICE_KEY]);
+    const candidate = stored && stored[QQ_RADIO_DEVICE_KEY];
+    if (candidate && candidate.openUdid && candidate.androidId) {
+      qqRadioDeviceCache = candidate;
+      return qqRadioDeviceCache;
+    }
+  } catch (_) {}
+  const device = {
+    openUdid: qqRandomHex(32),
+    androidId: qqRandomHex(16),
+    imei: qqRandomDigits(15),
+    model: 'MI 6',
+    brand: 'Xiaomi',
+    osRelease: '10',
+    sdk: 29,
+    fingerprint: `xiaomi/iarim/sagit:10/eomam.200122.001/${qqRandomDigits(7)}:user/release-keys`,
+    procVersion: `Linux 5.4.0-54-generic-${qqRandomHex(8)} (android-build@google.com)`,
+  };
+  qqRadioDeviceCache = device;
+  try { await chrome.storage.local.set({ [QQ_RADIO_DEVICE_KEY]: device }); } catch (_) {}
+  return device;
+}
 
 /**
  * 电台（私人 FM）用的 comm。参考实现对「带凭证的 musicu 请求」统一用 android 形态
- * （ct=11、cv/v=14090008、chid、tmeAppID、qq=音乐账号 id、authst=musickey、tmeLoginType），
- * 而我们的 comm 是网页形态（ct=19/24、没有 qq、没有 tmeLoginType）。
+ * （ct=11、cv/v=14090008、chid、tmeAppID、qq=音乐账号 id、authst=musickey、tmeLoginType，
+ * 外加一整套设备身份），而我们的 comm 是网页形态（ct=19/24、没有 qq、没有设备字段）。
  * 日推与推荐歌单用网页 comm 也能过，但电台模块不认，会回 code 1000（登录失效）。
  *
- * tmeLoginType 必须在这里补默认值：QQ 扫码登录会把这个 cookie 删掉（防止上一条微信会话的
- * login_type=2 / tmeLoginType=1 串味），删掉之后 musicu 请求就一个通道标记都没有了。
+ * 另外两点按参考实现对齐：android comm **不带 uin**（只带 qq），所以这里显式把 uin 置空
+ * （JSON 序列化会丢掉 undefined 键）；tmeLoginType 必须补默认值，因为 QQ 扫码登录会把这个
+ * cookie 删掉（防止上一条微信会话的 login_type=2 / tmeLoginType=1 串味）。
  */
-function buildQQRadioComm(cookieHeader) {
+function buildQQRadioComm(cookieHeader, device) {
   const jar = parseCookieString(cookieHeader);
   const musicId = qqCookieMusicId(cookieHeader);
   const explicit = Number(jar.tmeLoginType);
@@ -1809,22 +1862,54 @@ function buildQQRadioComm(cookieHeader) {
     v: 14090008,
     chid: '10003505',
     tmeAppID: 'qqmusic',
+    QIMEI: '',
+    QIMEI36: '',
+    OpenUDID: device.openUdid,
+    udid: device.openUdid,
+    OpenUDID2: device.openUdid,
+    aid: device.androidId,
+    os_ver: device.osRelease,
+    phonetype: device.model,
+    devicelevel: String(device.sdk),
+    newdevicelevel: String(device.sdk),
+    rom: device.fingerprint,
     tmeLoginType: loginType,
+    uin: undefined,
     ...(musicId ? { qq: musicId } : {}),
   };
 }
 
+/**
+ * 参考实现对带凭证的 musicu 请求会**重建** Cookie 头，只用四个键，且 uin 是音乐账号 id
+ * 的裸值（没有登录时写进去的 `o` 前缀）：
+ *   uin=<musicid>; qqmusic_uin=<musicid>; qm_keyst=<key>; qqmusic_key=<key>
+ * 我们以前直接发 cookie 罐原串（`uin=o<musicid>` 等），是这个模块少见的差异之一。
+ * 拿不到 id 或 key 时退回原串，不把请求打死。
+ */
+function buildQQRadioCookie(cookieHeader) {
+  const jar = parseCookieString(cookieHeader);
+  const musicId = qqCookieMusicId(cookieHeader) || qqCookieUin(cookieHeader);
+  const key = jar.qm_keyst || jar.qqmusic_key || jar.music_key || '';
+  if (!musicId || !key) return cookieHeader;
+  return [`uin=${musicId}`, `qqmusic_uin=${musicId}`, `qm_keyst=${key}`, `qqmusic_key=${key}`].join('; ');
+}
+
+// 导出给单测：这两个纯函数决定电台请求的线上形状，出过三次问题，需要能被钉住。
+export { buildQQRadioComm, buildQQRadioCookie };
+
 /** 私人 FM（猜你喜欢）。上游实测 num 再大也只回 5 首，参数照抄。 */
 export async function handleQQGuessYouLike(cookieHeader) {
-  const comm = buildQQRadioComm(cookieHeader);
+  const device = await getQQRadioDevice();
+  const comm = buildQQRadioComm(cookieHeader, device);
   const result = await qqMusicuCall(
     'music.radioProxy.MbTrackRadioSvr', 'get_radio_track',
     { id: 99, firstplay: 1, num: 15 },
     cookieHeader,
     comm,
+    { ua: QQ_MUSICU_UA, cookie: buildQQRadioCookie(cookieHeader) },
   );
-  // 记下上游码与实际发出去的通道字段：只看到 __foliaBridgeError 时无法区分
-  // 「上游说没登录」和「模块不认 comm」。
+  // 记下上游码与实际发出去的字段：只看到 __foliaBridgeError 时无法区分
+  // 「上游说没登录」和「模块拒了这次请求」。
   noteLibraryStep('qq', 'guess-you-like:result', {
     ok: result.ok,
     code: result.code,
@@ -1834,6 +1919,7 @@ export async function handleQQGuessYouLike(cookieHeader) {
     tracks: Array.isArray(result.data && result.data.tracks) ? result.data.tracks.length : 0,
     hasMusicId: Boolean(comm.qq),
     loginType: comm.tmeLoginType,
+    hasDevice: Boolean(comm.OpenUDID),
   });
   if (!result.ok) {
     return result.loginRequired
