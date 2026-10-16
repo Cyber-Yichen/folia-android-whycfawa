@@ -48,6 +48,8 @@ const API_HOSTS = [
   // 再读 cookie 罐。不在白名单时这一步被 CORS 挡掉、异常又被 catch 吞了，表现为「登录态时好时坏」。
   // i.y.qq.com 也在这个域名下。
   'y.qq.com',
+  // QQ 的 QIMEI 设备指纹引导（参考实现的 android comm 带 QIMEI / QIMEI36，写接口尤其需要）。
+  'api.tencentmusic.com',
 ];
 
 type NativePlugin = {

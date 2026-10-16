@@ -1830,8 +1830,8 @@ function buildQQRadioComm(cookieHeader, device, loginTypeOverride) {
     v: 14090008,
     chid: '10003505',
     tmeAppID: 'qqmusic',
-    QIMEI: '',
-    QIMEI36: '',
+    QIMEI: device.qimei || '',
+    QIMEI36: device.qimei36 || '',
     OpenUDID: device.openUdid,
     udid: device.openUdid,
     OpenUDID2: device.openUdid,
@@ -1871,14 +1871,214 @@ function qqRadioLoginTypes(cookieHeader) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// QIMEI 设备指纹。
+//
+// 参考实现的 android comm 一直带 QIMEI / QIMEI36（它的认证流程会先 bootstrap 再拿真值），
+// 我们以前发空字符串。现场证据是：凭证、身份核对、关系读取、android 会话（uid/sid）全部到位，
+// 写入仍被业务码 500026 拒 —— 剩下没对齐的就是这个设备指纹。
+//
+// 协议：MD5 签名 + AES-128-CBC 载荷 + RSAES-PKCS1-v1_5 包裹随机密钥。本机已用真实接口验证
+// 整条链路（HTTP 200 / code 0 / 拿到 q16 与 q36）。
+// ---------------------------------------------------------------------------
+const QQ_QIMEI_URL = 'https://api.tencentmusic.com/tme/trpc/proxy';
+const QQ_QIMEI_SECRET = 'ZdJqM15EeO2zWc08';
+const QQ_QIMEI_APP_KEY = '0AND0HD6FE4HY80F';
+const QQ_QIMEI_CHANNEL_ID = '10003505';
+const QQ_QIMEI_PACKAGE_ID = 'com.tencent.qqmusic';
+const QQ_QIMEI_TTL_MS = 24 * 60 * 60 * 1000;
+const QQ_QIMEI_STORAGE_KEY = 'qqQimei';
+// 腾讯 bootstrap 公钥的模数（公开常量，不是每设备值；参考实现离线提取后写死）。
+const QQ_QIMEI_RSA_N_HEX = 'c4231830a2eb5fc2827170641e79d80fec51bda9a22e4b4ab37d1f205a4ae44d928cda25879f66a3429051663312a12'
+  + '7faf8a246bdaaf63918417e90d7c95b5908aa6a2d0f852e4a6770294a548ac1c2fe8f1f252fb826f4ac86ab9a00e7ce4'
+  + '7d002a56e7c4b51eb889acc60ca6adbc9f72e81f4d31b1dd7464805264530ab1d';
+
+const qqMd5Hex = (...values) => CryptoJS.MD5(values.join('')).toString();
+
+function qqHexToBytes(hex) {
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i += 1) out[i] = parseInt(hex.substr(i * 2, 2), 16);
+  return out;
+}
+
+/**
+ * RSAES-PKCS1-v1_5（RFC 8017 §7.2.1）。Web Crypto 的 subtle 只提供 RSA-OAEP，加密侧的
+ * PKCS1v1.5 填充没有原语，所以照参考实现用 BigInt 模幂自己实现。
+ */
+function qqRsaPkcs1Encrypt(message) {
+  const modulus = BigInt(`0x${QQ_QIMEI_RSA_N_HEX}`);
+  const k = QQ_QIMEI_RSA_N_HEX.length / 2;
+  if (message.length > k - 11) throw new Error('QQ QIMEI: payload too long for the bootstrap key');
+  const paddingLength = k - message.length - 3;
+  const padding = new Uint8Array(paddingLength);
+  let filled = 0;
+  while (filled < paddingLength) {
+    const batch = new Uint8Array(paddingLength - filled);
+    (globalThis.crypto || window.crypto).getRandomValues(batch);
+    for (const byte of batch) if (byte !== 0) padding[filled++] = byte;
+  }
+  const block = new Uint8Array(k);
+  block[1] = 0x02;
+  block.set(padding, 2);
+  block[2 + paddingLength] = 0x00;
+  block.set(message, 3 + paddingLength);
+
+  const exponent = 65537n;
+  let value = 0n;
+  for (const byte of block) value = (value << 8n) | BigInt(byte);
+  let result = 1n;
+  let base = value % modulus;
+  let exp = exponent;
+  while (exp > 0n) {
+    if (exp & 1n) result = (result * base) % modulus;
+    exp >>= 1n;
+    base = (base * base) % modulus;
+  }
+  return qqHexToBytes(result.toString(16).padStart(k * 2, '0'));
+}
+
+/** AES-128-CBC，密钥与 IV 都是同一个 16 字节密钥材料（QIMEI 协议自己的约定）。 */
+function qqAesCbcEncrypt(keyBytes, plaintext) {
+  const key = CryptoJS.lib.WordArray.create(keyBytes);
+  const params = CryptoJS.AES.encrypt(CryptoJS.enc.Utf8.parse(plaintext), key, {
+    iv: key,
+    mode: CryptoJS.mode.CBC,
+    padding: CryptoJS.pad.Pkcs7,
+  });
+  return CryptoJS.enc.Base64.stringify(params.ciphertext);
+}
+
+function qqBeaconId(now) {
+  const month = `${now.toISOString().slice(0, 7)}-01`;
+  const first = qqRandomDigits(6);
+  const second = qqRandomDigits(9);
+  const dated = new Set([1, 2, 13, 14, 17, 18, 21, 22, 25, 26, 29, 30, 33, 34, 37, 38]);
+  const fields = [];
+  for (let key = 1; key <= 40; key += 1) {
+    if (dated.has(key)) fields.push(`k${key}:${month}${first}.${second}`);
+    else if (key === 3) fields.push('k3:0000000000000000');
+    else if (key === 4) fields.push(`k4:${qqRandomHex(16).replace(/0/g, '1')}`);
+    else fields.push(`k${key}:${Math.floor(Math.random() * 10000)}`);
+  }
+  return `${fields.join(';')};`;
+}
+
+function buildQQQimeiPayload(device, now) {
+  const uptime = new Date(now.getTime() - Math.floor(Math.random() * 14401) * 1000)
+    .toISOString().replace('T', ' ').slice(0, 19);
+  const reserved = {
+    harmony: '0', clone: '0', containe: '',
+    oz: 'UhYmelwouA+V2nPWbOvLTgN2/m8jwGB+yUB5v9tysQg=',
+    oo: 'Xecjt+9S1+f8Pz2VLSxgpw==', kelong: '0', uptimes: uptime, multiUser: '0',
+    bod: device.brand, dv: device.device || 'sagit', firstLevel: '', manufact: device.brand,
+    name: device.model, host: 'se.infra', kernel: device.procVersion,
+  };
+  return {
+    androidId: device.androidId, platformId: 1, appKey: QQ_QIMEI_APP_KEY, appVersion: '14.9.0.8',
+    beaconIdSrc: qqBeaconId(now), brand: device.brand, channelId: QQ_QIMEI_CHANNEL_ID, cid: '',
+    imei: device.imei, imsi: '', mac: '', model: device.model, networkType: 'unknown',
+    oaid: '', osVersion: `Android ${device.osRelease},level ${device.sdk}`, qimei: '', qimei36: '',
+    sdkVersion: '1.2.13.6', targetSdkVersion: '33', audit: '', userId: '{}',
+    packageId: QQ_QIMEI_PACKAGE_ID, deviceType: 'Phone', sdkName: '', reserved: JSON.stringify(reserved),
+  };
+}
+
+/** 一次 QIMEI bootstrap 往返，返回 { qimei, qimei36 }（取不到就是空串）。 */
+async function requestQQQimei(device) {
+  const now = new Date();
+  const cryptKey = qqRandomHex(16);
+  const nonce = qqRandomHex(16);
+  const timestamp = Math.floor(now.getTime() / 1000);
+  const keyBytes = new Uint8Array(16);
+  for (let i = 0; i < 16; i += 1) keyBytes[i] = cryptKey.charCodeAt(i);
+
+  const key = CryptoJS.enc.Base64.stringify(CryptoJS.lib.WordArray.create(qqRsaPkcs1Encrypt(keyBytes)));
+  const params = qqAesCbcEncrypt(keyBytes, JSON.stringify(buildQQQimeiPayload(device, now)));
+  const extra = JSON.stringify({ appKey: QQ_QIMEI_APP_KEY });
+
+  const response = await fetch(QQ_QIMEI_URL, {
+    method: 'POST',
+    headers: {
+      method: 'GetQimei',
+      service: 'trpc.tme_datasvr.qimeiproxy.QimeiProxy',
+      appid: 'qimei_qq_android',
+      sign: qqMd5Hex('qimei_qq_androidpzAuCmaFAaFaHrdakPjLIEqKrGnSOOvH', String(timestamp)),
+      'user-agent': 'QQMusic',
+      timestamp: String(timestamp),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      app: 0,
+      os: 1,
+      qimeiParams: {
+        key,
+        params,
+        time: String(timestamp),
+        nonce,
+        sign: qqMd5Hex(key, params, String(timestamp * 1000), nonce, QQ_QIMEI_SECRET, extra),
+        extra,
+      },
+    }),
+  });
+  const outer = await response.json();
+  // 服务端的 data 是「JSON 字符串套 JSON 字符串」，所以要解两层。
+  const inner = typeof outer?.data === 'string' ? JSON.parse(outer.data) : outer?.data;
+  const payload = inner?.data ?? {};
+  return {
+    qimei: typeof payload.q16 === 'string' ? payload.q16 : '',
+    qimei36: typeof payload.q36 === 'string' ? payload.q36 : '',
+    outerCode: outer?.code,
+    innerCode: inner?.code,
+  };
+}
+
+/** 取 QIMEI，带 24 小时缓存；失败只是留空，不阻断请求。 */
+async function ensureQQQimei(device) {
+  if (device.qimei) return { qimei: device.qimei, qimei36: device.qimei36 || '' };
+  const fresh = (cached) => cached && cached.qimei
+    && Number.isFinite(cached.savedAt)
+    && Date.now() - cached.savedAt < QQ_QIMEI_TTL_MS;
+  try {
+    const stored = await chrome.storage.local.get([QQ_QIMEI_STORAGE_KEY]);
+    const cached = stored && stored[QQ_QIMEI_STORAGE_KEY];
+    if (fresh(cached)) {
+      device.qimei = cached.qimei;
+      device.qimei36 = cached.qimei36 || '';
+      return { qimei: device.qimei, qimei36: device.qimei36 };
+    }
+  } catch (_) {}
+  try {
+    const result = await requestQQQimei(device);
+    noteLibraryStep('qq', 'qimei:bootstrap', {
+      code: result.outerCode,
+      innerCode: result.innerCode,
+      q16Length: result.qimei.length,
+      q36Length: result.qimei36.length,
+    });
+    if (!result.qimei) return { qimei: '', qimei36: '' };
+    device.qimei = result.qimei;
+    device.qimei36 = result.qimei36;
+    try {
+      await chrome.storage.local.set({
+        [QQ_QIMEI_STORAGE_KEY]: { qimei: result.qimei, qimei36: result.qimei36, savedAt: Date.now() },
+      });
+    } catch (_) {}
+    return { qimei: result.qimei, qimei36: result.qimei36 };
+  } catch (error) {
+    noteLibraryStep('qq', 'qimei:error', { message: String(error && error.message || error) });
+    return { qimei: '', qimei36: '' };
+  }
+}
+
 /**
  * 「客户端模块」的 musicu 调用：android comm + QQMusic UA + 重建后的凭据 cookie。
  *
  * 参考实现给这些模块统一用 createSessionMusicuClient（同一套形态），我们以前只有查询接口
- * 能过、电台与收藏写入都失败。设备身份按需生成并持久化，所以这里 await 一次即可。
+ * 能过、电台与收藏写入都失败。设备身份与 QIMEI 按需生成并持久化，所以这里 await 一次即可。
  */
 async function qqAndroidMusicuCall(module, method, param, cookieHeader) {
   const device = await getQQRadioDevice();
+  await ensureQQQimei(device);
   const { candidates } = qqRadioLoginTypes(cookieHeader);
   return qqMusicuCall(
     module, method, param, cookieHeader,
@@ -1952,6 +2152,7 @@ async function ensureQQAndroidSession(device) {
  */
 async function qqAndroidWriteCall(module, method, param, cookieHeader) {
   const device = await getQQRadioDevice();
+  await ensureQQQimei(device);
   await ensureQQAndroidSession(device);
   const { candidates } = qqRadioLoginTypes(cookieHeader);
   const send = () => qqMusicuCall(
@@ -1990,6 +2191,7 @@ export { buildQQRadioComm, buildQQRadioCookie, qqRadioLoginTypes };
 /** 私人 FM（猜你喜欢）。上游实测 num 再大也只回 5 首，参数照抄。 */
 export async function handleQQGuessYouLike(cookieHeader) {
   const device = await getQQRadioDevice();
+  await ensureQQQimei(device);
   const { channel, jarType, candidates } = qqRadioLoginTypes(cookieHeader);
   const cookie = buildQQRadioCookie(cookieHeader);
   let last = null;
