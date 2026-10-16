@@ -4340,7 +4340,7 @@ export async function handleKGUserCloud(params, cookieHeader) {
     mobile: true,
     method: 'POST',
     headers: { Cookie: buildKGLeanCookie(cookieHeader), 'User-Agent': KG_ANDROID_UA, 'Content-Type': 'application/json' },
-    body: kgBase64ToBytes(encoded.str),
+    body: base64ToBytes(encoded.str),
   });
   const body = kgCloudAesDecrypt(kgBytesToBase64(bytes), encoded.key);
   noteLibraryStep('kugou', 'user:cloud:done', {

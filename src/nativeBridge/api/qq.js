@@ -1,3 +1,4 @@
+import CryptoJS from '../vendor/crypto-es.mjs';
 import {
   getQQCookie,
   parseCookieString,
