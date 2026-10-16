@@ -923,7 +923,10 @@ async function kgPostAndroidSigned(baseURL, urlPath, cookieHeader, bodyData, ext
   const dfid = kgCookieDfid(cookieHeader) || '-';
   const clienttime = Math.floor(Date.now() / 1000);
   const leanCookie = buildKGLeanCookie(cookieHeader);
-  const bodyJson = bodyData === undefined ? '' : JSON.stringify(bodyData || {});
+  // rawBody：加密体（AES 串）要按原样发出去、也按原样进签名（JSON.stringify 会多一层引号）。
+  const bodyJson = bodyData === undefined
+    ? ''
+    : (opts.rawBody ? String(bodyData) : JSON.stringify(bodyData || {}));
   const params = Object.assign({
     dfid,
     mid,
@@ -939,7 +942,7 @@ async function kgPostAndroidSigned(baseURL, urlPath, cookieHeader, bodyData, ext
     .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`)
     .join('&');
   const url = `${String(baseURL || '').replace(/\/$/, '')}${urlPath.startsWith('/') ? urlPath : `/${urlPath}`}?${qs}`;
-  return kgFetchJSON(url, {
+  const request = {
     mobile: true,
     method: 'POST',
     referer: 'https://www.kugou.com/',
@@ -956,7 +959,10 @@ async function kgPostAndroidSigned(baseURL, urlPath, cookieHeader, bodyData, ext
       'kg-rf': 'B9EDA08A64250DEFFBCADDEE00F8F25F',
     }, buildKGAuthHeaders(token), extraHeaders),
     body: bodyJson,
-  });
+  };
+  // 云盘系列的响应体是 AES 加密的二进制（responseType: arraybuffer），要按字节取再解密。
+  if (opts.responseBytes) return await kgFetchBytes(url, request);
+  return kgFetchJSON(url, request);
 }
 
 /**
@@ -1564,8 +1570,13 @@ function keepKGUserPlaylist(pl, userId) {
 }
 
 async function kgFetchText(url, opts) {
+  return (await kgFetchResponse(url, opts)).text();
+}
+
+/** 原始 Response：云盘系列的响应体是二进制（AES 加密），要按字节取，不能走 text()。 */
+function kgFetchResponse(url, opts) {
   opts = opts || {};
-  const resp = await fetch(url, {
+  return fetch(url, {
     method: opts.method || 'GET',
     headers: Object.assign({
       'User-Agent': opts.mobile ? KG_UA_MOBILE : KG_UA_PC,
@@ -1576,7 +1587,10 @@ async function kgFetchText(url, opts) {
     // 长轮询端点要单独放宽安卓桥的 15 秒上限（见 nativeAndroidBridge 的 foliaTimeoutMs）。
     ...(Number(opts.timeoutMs) > 0 ? { foliaTimeoutMs: Number(opts.timeoutMs) } : {}),
   });
-  return resp.text();
+}
+
+async function kgFetchBytes(url, opts) {
+  return new Uint8Array(await (await kgFetchResponse(url, opts)).arrayBuffer());
 }
 
 async function kgFetchJSON(url, opts) {
@@ -4082,6 +4096,257 @@ export async function handleKGPlaylistAddSong(listId, hash, albumId, albumAudioI
     listId,
     hash: meta.hash,
   };
+}
+
+// ---------------------------------------------------------------------------
+// 歌单写入与用户云盘（cloudlist.service / mcloudservice）
+//
+// 这一族的请求体与其余接口不同：body 是 AES-128-CBC 加密体，密钥由 6 位随机小写串派生
+//   encryptKey = md5(key)[0:16]，iv = md5(key)[16:32]
+// 再用 RSA 把 {aes, uid, token} 包成 p 参数。这里的 RSA 是 RSAES-PKCS1-v1_5（参考实现的
+// rsaEncrypt2），而本文件的 kgRsaEncryptRaw 是「零填充裸 RSA」，两者不能互换。
+// 端点与参数来自 docs/ku-go-api-docs.md 的 /playlist/add|del、/playlist/tracks/add|del、
+// /user/cloud，以及 KuGouMusicApi 对应的 module。
+// ---------------------------------------------------------------------------
+
+/** 云盘系列的 AES 加密：返回 { key, str }，key 随 p 参数发给服务端用于解密。 */
+function kgCloudAesEncrypt(data) {
+  const key = kgRandomString(6).toLowerCase();
+  const digest = md5(key);
+  const text = typeof data === 'object' ? JSON.stringify(data) : String(data == null ? '' : data);
+  const encrypted = CryptoJS.AES.encrypt(
+    CryptoJS.enc.Utf8.parse(text),
+    CryptoJS.enc.Utf8.parse(digest.substring(0, 16)),
+    { iv: CryptoJS.enc.Utf8.parse(digest.substring(16, 32)), mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 },
+  );
+  return { key, str: CryptoJS.enc.Base64.stringify(encrypted.ciphertext) };
+}
+
+function kgCloudAesDecrypt(str, key) {
+  const digest = md5(String(key || ''));
+  const cipherParams = CryptoJS.lib.CipherParams.create({ ciphertext: CryptoJS.enc.Base64.parse(String(str || '')) });
+  const decrypted = CryptoJS.AES.decrypt(cipherParams, CryptoJS.enc.Utf8.parse(digest.substring(0, 16)), {
+    iv: CryptoJS.enc.Utf8.parse(digest.substring(16, 32)),
+    mode: CryptoJS.mode.CBC,
+    padding: CryptoJS.pad.Pkcs7,
+  });
+  const text = decrypted.toString(CryptoJS.enc.Utf8);
+  try { return JSON.parse(text); } catch (_) { return text; }
+}
+
+/** RSAES-PKCS1-v1_5（RFC 8017 §7.2.1），输出大写 hex，与参考实现 rsaEncrypt2 一致。 */
+function kgRsaPkcs1Encrypt(data) {
+  const text = typeof data === 'object' ? JSON.stringify(data) : String(data == null ? '' : data);
+  const message = new TextEncoder().encode(text);
+  const k = KG_RSA_KEY_BYTES;
+  if (message.length > k - 11) throw new Error('KG_RSA_OVERFLOW');
+  const paddingLength = k - message.length - 3;
+  const padding = new Uint8Array(paddingLength);
+  let filled = 0;
+  while (filled < paddingLength) {
+    const batch = new Uint8Array(paddingLength - filled);
+    (globalThis.crypto || window.crypto).getRandomValues(batch);
+    for (const byte of batch) if (byte !== 0) padding[filled++] = byte;
+  }
+  const block = new Uint8Array(k);
+  block[1] = 0x02;
+  block.set(padding, 2);
+  block[2 + paddingLength] = 0x00;
+  block.set(message, 3 + paddingLength);
+  let value = BigInt(0);
+  for (const byte of block) value = (value << BigInt(8)) | BigInt(byte);
+  const encrypted = kgModPow(value, KG_RSA_EXP, KG_RSA_MODULUS);
+  return encrypted.toString(16).padStart(k * 2, '0').toUpperCase();
+}
+
+function kgBytesToBase64(bytes) {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function kgParam(params, key, fallback) {
+  const value = params && params[key];
+  if (value === undefined || value === null || value === '') return fallback;
+  return value;
+}
+
+/** 歌单写入前统一要的登录态（userid + token），拿不到就按未登录返回。 */
+function kgRequirePlaylistAuth(cookieHeader) {
+  const userId = String(kgCookieUserId(cookieHeader) || '').trim();
+  const token = String(kgCookieToken(cookieHeader) || '').trim();
+  if (!userId || !token) return null;
+  return { userId, token };
+}
+
+/** `/playlist/add`：收藏歌单（type=1）或新建歌单（type=0）。 */
+export async function handleKGPlaylistWrite(params, cookieHeader) {
+  cookieHeader = cookieHeader || await getKGCookie();
+  const auth = kgRequirePlaylistAuth(cookieHeader);
+  if (!auth) return { status: 0, error_code: 401, data: {} };
+  const type = Number(kgParam(params, 'type', 0)) === 0 ? 0 : 1;
+  const clienttime = Math.floor(Date.now() / 1000);
+  const data = {
+    userid: auth.userId,
+    token: auth.token,
+    total_ver: 0,
+    name: String(kgParam(params, 'name', '') || ''),
+    type,
+    source: Number(kgParam(params, 'source', 1)) === 0 ? 0 : (Number(kgParam(params, 'source', 1)) || 1),
+    is_pri: 0,
+    list_create_userid: String(kgParam(params, 'list_create_userid', '') || ''),
+    list_create_listid: String(kgParam(params, 'list_create_listid', '') || ''),
+    list_create_gid: String(kgParam(params, 'list_create_gid', '') || ''),
+    from_shupinmv: 0,
+  };
+  // 隐私标记只在新建歌单时有效（上游同此约定）。
+  if (type === 0) data.is_pri = Number(kgParam(params, 'is_pri', 0)) || 0;
+  const extra = type === 0 ? { last_time: clienttime, last_area: 'gztx', userid: auth.userId, token: auth.token } : {};
+  const body = await kgPostAndroidSigned(
+    KG_CLOUDLIST_GATEWAY, '/v5/add_list', cookieHeader, data, extra, KG_CLOUDLIST_ROUTER,
+  );
+  noteLibraryStep('kugou', 'playlist:add:done', {
+    type, status: body && body.status, errorCode: body && body.error_code,
+  });
+  return body || { status: 0, error_code: -1, data: {} };
+}
+
+/** `/playlist/del`：取消收藏 / 删除歌单。走加密体，响应也是加密的二进制。 */
+export async function handleKGPlaylistDel(params, cookieHeader) {
+  cookieHeader = cookieHeader || await getKGCookie();
+  const auth = kgRequirePlaylistAuth(cookieHeader);
+  if (!auth) return { status: 0, error_code: 401, data: {} };
+  const listId = Number(kgParam(params, 'listid', 0)) || 0;
+  if (!listId) return { status: 0, error_code: -1, data: {} };
+  const clienttime = Math.floor(Date.now() / 1000);
+  const encoded = kgCloudAesEncrypt({ listid: listId, total_ver: 0, type: 1 });
+  const p = kgRsaPkcs1Encrypt({ aes: encoded.key, uid: auth.userId, token: auth.token });
+  const bytes = await kgPostAndroidSigned(
+    KG_CLOUDLIST_GATEWAY, '/v2/delete_list', cookieHeader, encoded.str,
+    { clienttime, last_area: 'gztx', last_time: clienttime, p },
+    KG_CLOUDLIST_ROUTER,
+    { rawBody: true, responseBytes: true },
+  );
+  const body = kgCloudAesDecrypt(kgBytesToBase64(bytes || new Uint8Array(0)), encoded.key);
+  noteLibraryStep('kugou', 'playlist:del:done', {
+    status: body && body.status, errorCode: body && body.error_code,
+  });
+  return (body && typeof body === 'object') ? body : { status: 0, error_code: -1, data: {} };
+}
+
+/** `/playlist/tracks/add`：data 是「歌曲名|hash|专辑id|mixsongid」，逗号分隔多首。 */
+export async function handleKGPlaylistTracksAdd(params, cookieHeader) {
+  cookieHeader = cookieHeader || await getKGCookie();
+  const auth = kgRequirePlaylistAuth(cookieHeader);
+  if (!auth) return { status: 0, error_code: 401, data: {} };
+  const listId = String(kgParam(params, 'listid', '') || '').trim();
+  if (!listId) return { status: 0, error_code: -1, data: {} };
+  const resource = String(kgParam(params, 'data', '') || '').split(',').filter(Boolean).map((entry) => {
+    const parts = entry.split('|');
+    return {
+      number: 1,
+      name: parts[0] || '',
+      hash: parts[1] || '',
+      size: 0,
+      sort: 0,
+      timelen: 0,
+      bitrate: 0,
+      album_id: Number(parts[2] || 0) || 0,
+      mixsongid: Number(parts[3] || 0) || 0,
+    };
+  });
+  if (!resource.length) return { status: 0, error_code: -1, data: {} };
+  const clienttime = Math.floor(Date.now() / 1000);
+  const body = await kgPostAndroidSigned(
+    KG_CLOUDLIST_GATEWAY, '/v6/add_song', cookieHeader,
+    {
+      userid: auth.userId,
+      token: auth.token,
+      listid: Number(listId) || listId,
+      list_ver: 0,
+      type: 0,
+      slow_upload: 1,
+      scene: 'false;null',
+      data: resource,
+    },
+    { last_time: clienttime, last_area: 'gztx', userid: auth.userId, token: auth.token },
+    KG_CLOUDLIST_ROUTER,
+  );
+  noteLibraryStep('kugou', 'playlist:tracks:add:done', {
+    count: resource.length, status: body && body.status, errorCode: body && body.error_code,
+  });
+  return body || { status: 0, error_code: -1, data: {} };
+}
+
+/** `/playlist/tracks/del`：fileids 逗号分隔。 */
+export async function handleKGPlaylistTracksDel(params, cookieHeader) {
+  cookieHeader = cookieHeader || await getKGCookie();
+  const auth = kgRequirePlaylistAuth(cookieHeader);
+  if (!auth) return { status: 0, error_code: 401, data: {} };
+  const listId = String(kgParam(params, 'listid', '') || '').trim();
+  const resource = String(kgParam(params, 'fileids', '') || '').split(',').filter(Boolean)
+    .map((fileId) => ({ fileid: Number(fileId) || 0 }));
+  if (!listId || !resource.length) return { status: 0, error_code: -1, data: {} };
+  const body = await kgPostAndroidSigned(
+    KG_CLOUDLIST_GATEWAY, '/v4/delete_songs', cookieHeader,
+    {
+      listid: Number(listId) || listId,
+      userid: auth.userId,
+      data: resource,
+      type: 0,
+      token: auth.token,
+      list_ver: 0,
+    },
+    { last_time: Math.floor(Date.now() / 1000), last_area: 'gztx', userid: auth.userId, token: auth.token },
+    KG_CLOUDLIST_ROUTER,
+  );
+  noteLibraryStep('kugou', 'playlist:tracks:del:done', {
+    count: resource.length, status: body && body.status, errorCode: body && body.error_code,
+  });
+  return body || { status: 0, error_code: -1, data: {} };
+}
+
+/**
+ * `/user/cloud`：用户云盘列表。
+ *
+ * 端点与参数按 KuGouMusicApi 的 user_cloud module：自定义 host mcloudservice，只带
+ * clienttime/mid/key/clientver/appid/p（clearDefaultParams + notSignature），body 是
+ * AES 密文的**原始字节**（不是 base64 串），响应同样是加密体。
+ */
+export async function handleKGUserCloud(params, cookieHeader) {
+  cookieHeader = cookieHeader || await getKGCookie();
+  const auth = kgRequirePlaylistAuth(cookieHeader);
+  if (!auth) return { status: 0, error_code: 401, data: {} };
+  const clienttime = Math.floor(Date.now() / 1000);
+  const mid = await getKGMid(cookieHeader);
+  const encoded = kgCloudAesEncrypt({
+    page: Number(kgParam(params, 'page', 1)) || 1,
+    pagesize: Number(kgParam(params, 'pagesize', 30)) || 30,
+    getkmr: 1,
+  });
+  const p = kgRsaPkcs1Encrypt({ aes: encoded.key, uid: auth.userId, token: auth.token });
+  const query = {
+    clienttime,
+    mid,
+    key: kgSignParamsKey(String(clienttime)),
+    clientver: KG_LITE_CLIENTVER,
+    appid: KG_LITE_APPID,
+    p,
+  };
+  const qs = Object.keys(query)
+    .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(query[key])}`)
+    .join('&');
+  const bytes = await kgFetchBytes(`https://mcloudservice.kugou.com/v1/get_list?${qs}`, {
+    mobile: true,
+    method: 'POST',
+    headers: { Cookie: buildKGLeanCookie(cookieHeader), 'User-Agent': KG_ANDROID_UA, 'Content-Type': 'application/json' },
+    body: kgBase64ToBytes(encoded.str),
+  });
+  const body = kgCloudAesDecrypt(kgBytesToBase64(bytes), encoded.key);
+  noteLibraryStep('kugou', 'user:cloud:done', {
+    status: body && body.status, errorCode: body && body.error_code,
+  });
+  return (body && typeof body === 'object') ? body : { status: 0, error_code: -1, data: {} };
 }
 
 export function normalizeKGCookieInput(raw) {

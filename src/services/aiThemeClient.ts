@@ -223,6 +223,28 @@ const requestOpenAiThemeJson = async (systemPrompt: string, sourcePrompt: string
 };
 
 /**
+ * 被输出上限截断时再要一次。
+ *
+ * `finish_reason=length` 意味着 JSON 一定不完整，`stage=parse` 的「Invalid AI theme JSON format」现场
+ * 报告就是这种形态。截断取决于这一次推理花了多少预算，是偶发的 —— 再要一次通常就是完整的。
+ * 只在这一种情况下多发一次请求；第二次更短（同为截断）时保留第一次，避免用更差的响应替换。
+ */
+export const requestThemeJsonWithTruncationRetry = async (
+    request: () => Promise<AiThemeRawResponse>,
+): Promise<AiThemeRawResponse> => {
+    const first = await request();
+    if (first.finishReason !== 'length') return first;
+    try {
+        const second = await request();
+        if (second.finishReason === 'length' && second.textLength < first.textLength) return first;
+        return second;
+    } catch {
+        // 重试失败就沿用第一次的响应与它自带的 finish/chars 诊断。
+        return first;
+    }
+};
+
+/**
  * 用用户自己配置的服务商生成主题。
  * 抛出的错误消息与桌面版一致，`isMissingAiApiKeyError` 才能识别「还没填 Key」。
  */
@@ -242,9 +264,11 @@ export const generateThemeWithConfiguredAi = async (
     let stage: AiThemeStage = 'request';
 
     try {
-        const raw = provider === 'openai'
-            ? await requestOpenAiThemeJson(THEME_GENERATION_PROMPT_PREFIX, sourcePrompt)
-            : await requestGeminiThemeJson(THEME_GENERATION_PROMPT_PREFIX, sourcePrompt);
+        const raw = await requestThemeJsonWithTruncationRetry(() => (
+            provider === 'openai'
+                ? requestOpenAiThemeJson(THEME_GENERATION_PROMPT_PREFIX, sourcePrompt)
+                : requestGeminiThemeJson(THEME_GENERATION_PROMPT_PREFIX, sourcePrompt)
+        ));
 
         stage = 'parse';
         let parsed: unknown;

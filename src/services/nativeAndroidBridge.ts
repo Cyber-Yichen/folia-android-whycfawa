@@ -37,6 +37,17 @@ const API_HOSTS = [
   'kugou.com',
   'kuwo.cn',
   'api.qrserver.com',
+  // 封面与头像。前端会为了封面缓存 / 预加载直接 fetch 这些 CDN（coverCache、playedTrackCache、
+  // useLocalCoverPreloader 都是 `mode: 'cors'`），漏掉一个就是「封面永远缓存不上」且不报错。
+  // 整域名匹配，网易云的 p1/p2/... 与酷狗的 c1/imge 等子域一并覆盖。
+  'y.gtimg.cn',
+  'qlogo.cn',
+  '126.net',
+  'kgimg.com',
+  // QQ 门户：warmQQLoginCookies 先访问它让服务端下发 / 刷新 cookie（credentials: include），
+  // 再读 cookie 罐。不在白名单时这一步被 CORS 挡掉、异常又被 catch 吞了，表现为「登录态时好时坏」。
+  // i.y.qq.com 也在这个域名下。
+  'y.qq.com',
 ];
 
 type NativePlugin = {
@@ -86,12 +97,42 @@ const base64ToBytes = (value?: string): Uint8Array => {
 };
 
 /** True when a request must go through the native OkHttp proxy instead of the WebView's fetch. */
-export const isBridgedApiUrl = (url: string): boolean => {
+export const isBridgedApiUrl = (url: string): boolean => (
+  resolveBridgedRequestUrl(url) !== null
+);
+
+/**
+ * 桌面/网页版把绕 CORS 的请求交给同源的 `/api/lyric-proxy?url=...`（封面缓存、QQ 歌词、
+ * 酷狗歌词与 legacy 搜索都在用它）。安卓这边由 Capacitor 的本地服务器提供 dist，
+ * **没有任何东西实现这个路由** —— 相对路径解析到 https://localhost，既不在白名单里、
+ * 原样发出去又是 404，于是这些功能在安卓上静默失败。
+ *
+ * 这里把同源的代理请求解回真正的目标地址，交给原生 OkHttp 去取（同样绕开 CORS），
+ * 顺带不必再把每个图片 CDN 一个个加进白名单。
+ *
+ * 返回 null 表示这次请求不走原生代理。
+ */
+export const resolveBridgedRequestUrl = (url: string): string | null => {
+  let parsed: URL;
   try {
-    const { hostname } = new URL(url, location.href);
-    return API_HOSTS.some((host) => hostname === host || hostname.endsWith(`.${host}`));
+    parsed = new URL(url, location.href);
   } catch {
-    return false;
+    return null;
+  }
+  if (API_HOSTS.some((host) => parsed.hostname === host || parsed.hostname.endsWith(`.${host}`))) {
+    return parsed.toString();
+  }
+  // 只认自己页面发出的同源代理请求，避免把外部地址当代理入口。
+  const sameOrigin = parsed.hostname === location.hostname
+    && parsed.protocol === location.protocol
+    && parsed.port === location.port;
+  if (!sameOrigin || !/^\/api\/lyric-proxy\/?$/.test(parsed.pathname)) return null;
+  const target = parsed.searchParams.get('url');
+  if (!target) return null;
+  try {
+    return new URL(target).toString();
+  } catch {
+    return null;
   }
 };
 
@@ -225,7 +266,9 @@ const installFetchShim = (plugin: NativePlugin) => {
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const request = input instanceof Request ? input : null;
     const rawUrl = request?.url ?? String(input);
-    if (!isBridgedApiUrl(rawUrl)) {
+    // 同源的 /api/lyric-proxy 会被解回它包着的真实地址，再交给原生去取。
+    const targetUrl = resolveBridgedRequestUrl(rawUrl);
+    if (!targetUrl) {
       return originalFetch(input, init);
     }
 
@@ -252,7 +295,7 @@ const installFetchShim = (plugin: NativePlugin) => {
       : BRIDGED_REQUEST_TIMEOUT_MS;
     const result = await Promise.race([
       plugin.httpRequest({
-        url: rawUrl,
+        url: targetUrl,
         method,
         headers: Object.fromEntries(headers.entries()),
         bodyText: serialized.bodyText || '',
@@ -262,7 +305,7 @@ const installFetchShim = (plugin: NativePlugin) => {
       }),
       new Promise<never>((_resolve, reject) => {
         timeoutHandle = setTimeout(
-          () => reject(new Error(`Bridged request timed out after ${bridgeTimeoutMs}ms: ${method} ${rawUrl}`)),
+          () => reject(new Error(`Bridged request timed out after ${bridgeTimeoutMs}ms: ${method} ${targetUrl}`)),
           bridgeTimeoutMs,
         );
       }),

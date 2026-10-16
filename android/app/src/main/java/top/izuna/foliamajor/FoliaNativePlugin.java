@@ -531,6 +531,30 @@ public class FoliaNativePlugin extends Plugin {
     }
 
     /**
+     * 「返回键退到后台」：把任务移出前台，而不是结束 Activity。
+     *
+     * 结束 Activity 会连带收掉 WebView 与前台播放服务，用户看到的就是「退出应用就自动暂停播放」；
+     * 而这个前台服务本来就是为了后台播放准备的（onTaskRemoved 只记诊断、不自停）。真正的退出
+     * 交给系统（从最近任务划掉）或应用内的退出入口，它的 exitApp 仍然保留。
+     */
+    @PluginMethod
+    public void moveTaskToBack(PluginCall call) {
+        Activity activity = getActivity();
+        call.resolve();
+        if (activity != null) {
+            CrashDiagnostics.recordText(
+                getContext(),
+                "activity-lifecycle",
+                "main",
+                "back-to-background",
+                "JS back handler moved the task to the background",
+                "FoliaNativePlugin.moveTaskToBack"
+            );
+            activity.runOnUiThread(() -> activity.moveTaskToBack(true));
+        }
+    }
+
+    /**
      * 「导出诊断数据」：把报告写进缓存目录的 txt，再用 FileProvider 拉起系统分享面板。
      *
      * 报告正文由 WebView 侧生成后原样传入，这里只负责落盘和分享。文件名做白名单清洗，

@@ -70,6 +70,11 @@ import {
   handleKGPersonalFm,
   handleKGEverydayHistory,
   handleKGTopCardYouth,
+  handleKGPlaylistWrite,
+  handleKGPlaylistDel,
+  handleKGPlaylistTracksAdd,
+  handleKGPlaylistTracksDel,
+  handleKGUserCloud,
 } from './kugou.js';
 import { handleBodianRequest } from './bodian.js';
 
@@ -1264,8 +1269,17 @@ async function handleFoliaKugouRequest(input, url) {
     return body || { status: 1, error_code: 0, data: { info: [], list: [], total: 0 } };
   }
   if (operation === 'user_cloud') {
-    return { status: 1, error_code: 0, data: { info: [], songs: [], total: 0 } };
+    return await handleKGUserCloud({
+      page: params.page,
+      pagesize: params.pagesize,
+    }, cookie);
   }
+  // 歌单写入。以前这四个操作在桥里没有路由，调用方只会拿到 UNSUPPORTED，
+  // 表现为「收藏歌单 / 加歌 / 删歌」点了没反应。
+  if (operation === 'playlist_add') return await handleKGPlaylistWrite(params, cookie);
+  if (operation === 'playlist_del') return await handleKGPlaylistDel(params, cookie);
+  if (operation === 'playlist_tracks_add') return await handleKGPlaylistTracksAdd(params, cookie);
+  if (operation === 'playlist_tracks_del') return await handleKGPlaylistTracksDel(params, cookie);
   if (operation === 'youth_union_vip') return await getKGYouthUnionVip(cookie);
   if (operation === 'youth_day_vip') return await claimKGYouthDayVip(cookie, params.receive_day);
   if (operation === 'youth_day_vip_upgrade') {

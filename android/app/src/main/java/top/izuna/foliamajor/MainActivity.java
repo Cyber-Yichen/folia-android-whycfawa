@@ -58,8 +58,9 @@ public class MainActivity extends BridgeActivity {
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
-                // Let the WebView close its own settings/effects layer first; only a Back with
-                // nothing left to close exits the activity.
+                // Let the WebView close its own settings/effects layer first. When nothing is open the
+                // JS handler now moves the task to the background so playback keeps running; this
+                // finish() only remains as the fallback for a WebView with no backButton listener.
                 if (FoliaNativePlugin.emitBackPressed()) return;
                 CrashDiagnostics.recordText(
                     getApplicationContext(),
