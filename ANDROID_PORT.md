@@ -88,6 +88,26 @@ android/app/build/outputs/apk/debug/app-debug.apk
 - Android MediaStore 本地音乐扫描
 - App 内本地 HTTP 音频流
 
+### QQ 写入接口的形状（合并上游时务必保留）
+
+红心 / 取消红心的写入（`music.musicasset.PlaylistDetailWrite` 的 `AddSonglist` / `DelSonglist`）
+在 QQ 官方服务端只认**下面这个组合**，缺任何一半都会被业务码拒掉。这是 2026-10 用「形状矩阵
+自检」在现场矩阵里逐项试出来的，两条历史弯路各对了一半：
+
+| 形状 | 结果 |
+| --- | --- |
+| android comm + 设备身份 + QIMEI + `uid/sid` 会话，**不带 g_tk** | 业务码 `500026` |
+| **g_tk**（放 query）+ 网页 comm（`ct:24, uin`） | 业务码 `80105` |
+| **android comm + 设备身份 + QIMEI + `uid/sid` 会话 + g_tk** | `retCode=0`，关系真的改变 |
+
+实现集中在 `src/nativeBridge/api/qq.js` 的 `qqMusicassetWriteCall`：
+android comm（`buildQQRadioComm`）+ `buildQQRadioCookie` 重建的凭据 cookie + `QQ_MUSICU_UA` +
+`qqMusicRequest(..., { gTk: qqGtk(cookieHeader) })`。
+`qqGtk` 只吃 `skey` / `p_skey`（缺省 5381）—— 拿 `qm_keyst` 算会得到错误的 g_tk。
+
+写入一律靠**再读关系确认**（`SongFavRead/IsSongFanByMid`），上游自报成功不算数。
+QQ 的同一套形状也用于专辑订阅与歌单写入。
+
 ## 构建状态
 
 - `npm run build:capacitor` 已通过
