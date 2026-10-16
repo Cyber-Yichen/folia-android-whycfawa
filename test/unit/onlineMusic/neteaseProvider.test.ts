@@ -26,6 +26,7 @@ vi.mock('@/services/netease', () => ({
         getQrKey: vi.fn(),
         createQr: vi.fn(),
         scrobbleV1: vi.fn(),
+        likeSong: vi.fn(),
     },
 }));
 
@@ -44,6 +45,27 @@ const song: UnifiedSong = {
 
 describe('neteaseProvider', () => {
     beforeEach(() => vi.clearAllMocks());
+
+    // 现场问题：界面提示「收藏成功」，收藏里却没有这首歌。
+    // 桥在「写完复查发现没生效」时会回 { error: 'LIKE_NOT_APPLIED: …' }，
+    // provider 必须把它抛出去 —— 否则 omni 会把这次调用当成功并翻转本地缓存。
+    it('throws when the bridge reports the like did not take effect', async () => {
+        vi.mocked(neteaseApi.likeSong).mockResolvedValue({
+            error: 'LIKE_NOT_APPLIED: /api/radio/like 后关系仍是 false',
+        } as any);
+
+        await expect(neteaseProvider.mutations!.likeSong!(song, true)).rejects.toBeInstanceOf(OnlineProviderError);
+    });
+
+    it('resolves when the bridge confirmed the like', async () => {
+        vi.mocked(neteaseApi.likeSong).mockResolvedValue({
+            liked: true,
+            code: 200,
+            via: '/api/song/like',
+        } as any);
+
+        await expect(neteaseProvider.mutations!.likeSong!(song, true)).resolves.toBeUndefined();
+    });
 
     it('maps semantic high quality to the NetEase exhigh value', async () => {
         vi.mocked(neteaseApi.getSongUrl).mockResolvedValue({ data: [{ url: 'http://music.test/song.mp3' }] } as any);

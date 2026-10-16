@@ -1511,7 +1511,11 @@ describe('kugouProvider', () => {
                     }],
                 },
             })
-            .mockResolvedValueOnce({});
+            .mockResolvedValueOnce({})
+            // 写完必须读回确认：服务端真的多了这首歌才算成功。
+            .mockResolvedValueOnce({
+                data: { info: [{ hash: 'abc123', name: 'Song 1', album_id: 12, mixsongid: 34 }] },
+            });
 
         const song = normalizeKugouSong({
             hash: 'abc123',
@@ -1524,6 +1528,57 @@ describe('kugouProvider', () => {
         expect(requestMock).toHaveBeenNthCalledWith(2, 'playlist_tracks_add', {
             listid: '2',
             data: 'Song 1|ABC123|12|34',
+        });
+        expect(requestMock).toHaveBeenNthCalledWith(3, 'playlist_track_all', expect.objectContaining({
+            id: 'collection_3_liked_test_add',
+        }));
+    });
+
+    // 现场问题：提示收藏成功、实际没进收藏。KuGou 会用 200 + {status:0, error_code:…} 回绝一次写入，
+    // transport 只看 HTTP 状态，所以必须在 provider 里把这个码当失败。
+    it('fails the like when KuGou refuses the write with an error_code', async () => {
+        requestMock
+            .mockResolvedValueOnce({
+                data: {
+                    info: [{
+                        type: 0,
+                        source: 1,
+                        listid: 2,
+                        name: '我喜欢',
+                        global_collection_id: 'collection_3_liked_refused',
+                    }],
+                },
+            })
+            .mockResolvedValueOnce({ status: 0, error_code: 20028 });
+
+        const song = normalizeKugouSong({ hash: 'abc123', name: 'Song 1', album_id: 12, mixsongid: 34 });
+
+        await expect(kugouProvider.mutations?.likeSong?.(song, true)).rejects.toMatchObject({
+            code: 'network',
+        });
+    });
+
+    // 上游自报成功、读回却没有这首歌：同样必须报失败，否则心形亮着而收藏里没有。
+    it('fails the like when the liked playlist did not gain the track', async () => {
+        requestMock
+            .mockResolvedValueOnce({
+                data: {
+                    info: [{
+                        type: 0,
+                        source: 1,
+                        listid: 2,
+                        name: '我喜欢',
+                        global_collection_id: 'collection_3_liked_missing',
+                    }],
+                },
+            })
+            .mockResolvedValueOnce({})
+            .mockResolvedValue({ data: { info: [] } });
+
+        const song = normalizeKugouSong({ hash: 'abc123', name: 'Song 1', album_id: 12, mixsongid: 34 });
+
+        await expect(kugouProvider.mutations?.likeSong?.(song, true)).rejects.toMatchObject({
+            code: 'invalid-response',
         });
     });
 

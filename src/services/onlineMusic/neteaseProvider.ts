@@ -660,7 +660,17 @@ export const neteaseProvider: OnlineMusicProvider = {
     },
     mutations: {
         async likeSong(song, liked) {
-            await neteaseApi.likeSong(toNeteaseId(typeof song === 'object' ? song.id : song), liked);
+            const response = await neteaseApi.likeSong(toNeteaseId(typeof song === 'object' ? song.id : song), liked);
+            // 桥在「写完复查发现没生效」时会回 { error: 'LIKE_NOT_APPLIED: …' }。不抛出去的话
+            // omni 会把它当成功、翻转本地缓存 —— 那正是「提示收藏成功、收藏里却没有」的来源。
+            if (response && typeof response === 'object' && response.error) {
+                throw new OnlineProviderError(
+                    'unavailable',
+                    `NetEase like did not take effect: ${response.error}`,
+                    'netease',
+                    response,
+                );
+            }
         },
         async updatePlaylistTracks(operation, playlist, tracks) {
             const playlistId = typeof playlist === 'object' ? playlist.id : playlist;

@@ -969,6 +969,22 @@ const KUGOU_LIKED_TRACK_MAX_PAGES = 200;
 const KUGOU_LIKED_TRACK_CACHE_TTL_MS = 10_000;
 const kugouLikedTrackCache = new Map<string, { fetchedAt: number; songs: UnifiedSong[] }>();
 
+/**
+ * KuGou 写入是否被上游回绝。
+ *
+ * transport 只按 HTTP 状态判成败，而 KuGou 会用 `200 + {status: 0, error_code: …}` 拒绝一次
+ * 写入（例如设备校验 20028）。不看这个码就会把心形点亮、提示「收藏成功」，服务端却没有这首歌。
+ * 返回回绝码；`undefined` 表示没有明确的回绝信号。
+ */
+const kugouWriteRefusalCode = (body: unknown): number | undefined => {
+    const record = (body && typeof body === 'object') ? body as Record<string, unknown> : {};
+    const errorCode = Number(record.error_code ?? record.errcode);
+    if (Number.isFinite(errorCode) && errorCode !== 0) return errorCode;
+    const status = Number(record.status);
+    if (Number.isFinite(status) && status === 0) return status;
+    return undefined;
+};
+
 // KuGou's playlist entry `fileid` is local to one playlist, unlike the global audio hash. The
 // liked-song mutations must therefore look up the row id inside the liked playlist itself.
 const getKugouPlaylistTrackSongs = async (
@@ -1679,11 +1695,43 @@ export const kugouProvider: OnlineMusicProvider = {
             }
             const { listId, globalCollectionId } = likedPlaylistRef;
             if (liked) {
-                await requestKugou('playlist_tracks_add', {
+                const added = await requestKugou('playlist_tracks_add', {
                     listid: String(listId),
                     data: getKugouTrackAddData(song),
                 });
+                // transport 只看 HTTP 状态：KuGou 可以用 200 + {status:0, error_code:…} 回绝，
+                // 不校验就会把心形点亮并提示「收藏成功」，而服务端其实没有这首歌（现场问题）。
+                const refusedCode = kugouWriteRefusalCode(added);
+                if (refusedCode !== undefined) {
+                    throw new OnlineProviderError(
+                        'network',
+                        `KuGou playlist_tracks_add rejected (error_code=${refusedCode})`,
+                        'kugou',
+                        undefined,
+                        undefined,
+                        undefined,
+                        { stage: 'upstream', upstreamCode: refusedCode },
+                    );
+                }
                 if (globalCollectionId) kugouLikedTrackCache.delete(String(globalCollectionId));
+
+                // 写完必须再读确认：宁可报「失败」也不能假报成功。
+                // 收藏歌单可能很大，所以先看 10 秒窗口的缓存，再用 forceRefresh 复核一次。
+                if (globalCollectionId) {
+                    const likedCollectionId = String(globalCollectionId);
+                    const targetHashForAdd = getKugouTrackHash(song);
+                    const hasTrack = async (forceRefresh: boolean) => (
+                        await getKugouPlaylistTrackSongs(likedCollectionId, { forceRefresh })
+                    ).some(track => getKugouTrackHash(track) === targetHashForAdd);
+                    const applied = (await hasTrack(false)) || (await hasTrack(true));
+                    if (!applied) {
+                        throw new OnlineProviderError(
+                            'invalid-response',
+                            'KuGou liked playlist did not gain the track after add',
+                            'kugou',
+                        );
+                    }
+                }
                 return;
             }
 

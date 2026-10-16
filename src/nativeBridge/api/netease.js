@@ -804,28 +804,64 @@ export async function handleSongLike(id, like, cookie) {
   if (!info.loggedIn) return { error: 'LOGIN_REQUIRED', loggedIn: false };
   const trackId = Number(id);
   if (!Number.isFinite(trackId) || trackId <= 0) return { error: 'INVALID_ID', loggedIn: true, id: String(id || '') };
-  try {
-    const body = await weapiApi('/api/radio/like', {
-      alg: 'itembased',
-      trackId,
-      like: like !== false,
-      time: '3',
-    }, cookie);
-    const code = Number(body.code);
-    if (code && code !== 200) {
-      return {
-        error: body.msg || body.message || 'LIKE_FAILED',
-        loggedIn: true,
-        id: String(id),
-        liked: false,
-        code,
-        body,
-      };
+  const wanted = like !== false;
+
+  /**
+   * 现场问题：提示收藏成功，但「我喜欢的音乐」里没有这首歌。
+   *
+   * 原来这里只打 `/api/radio/like`（私人FM 的「喜欢」）并且**完全不校验结果** —— 上游无论有没有
+   * 真的写进收藏库都回 code 200，于是 UI 点亮心形、缓存也把歌记成已收藏。
+   *
+   * 现在按「写完再读确认」来：写之前读一次（已是目标状态就直接返回），写完用
+   * `/api/song/like/check` 复查；没变就换 `/api/song/like`（收藏库那条）再试一次；
+   * 仍然没变就报错 —— 宁可显示失败，也不假报成功。
+   */
+  const readLikedNow = async () => {
+    try {
+      const body = await weapiApi('/api/song/like/check', { ids: JSON.stringify([trackId]) }, cookie);
+      const data = (body && (body.data || body)) || {};
+      const value = data[trackId] ?? data[String(trackId)];
+      if (typeof value === 'boolean') return value;
+      const ids = Array.isArray(body && body.ids) ? body.ids : (Array.isArray(data.ids) ? data.ids : null);
+      if (ids) return ids.map(String).includes(String(trackId));
+    } catch (_) {}
+    return null;
+  };
+
+  const before = await readLikedNow();
+  if (before === wanted) return { loggedIn: true, id: String(id), liked: wanted, code: 200, via: 'already' };
+
+  const attempts = [
+    { path: '/api/radio/like', data: { alg: 'itembased', trackId, like: wanted, time: '3' } },
+    { path: '/api/song/like', data: { trackId, like: wanted } },
+  ];
+  let lastReason = '';
+  for (const attempt of attempts) {
+    try {
+      const body = await weapiApi(attempt.path, attempt.data, cookie);
+      const code = Number(body && body.code);
+      if (code && code !== 200) {
+        lastReason = `${attempt.path} code ${code}`;
+        continue;
+      }
+      const after = await readLikedNow();
+      if (after === wanted) {
+        return { loggedIn: true, id: String(id), liked: wanted, code: 200, via: attempt.path };
+      }
+      lastReason = after === null
+        ? `${attempt.path} 后无法复查`
+        : `${attempt.path} 后关系仍是 ${after}`;
+    } catch (err) {
+      lastReason = `${attempt.path} ${err.message || String(err)}`;
     }
-    return { loggedIn: true, id: String(id), liked: like !== false, code: code || 200, body };
-  } catch (err) {
-    return { error: err.message || 'LIKE_FAILED', loggedIn: true, id: String(id), liked: false };
   }
+  return {
+    error: `LIKE_NOT_APPLIED: ${lastReason}`,
+    loggedIn: true,
+    id: String(id),
+    liked: before === true,
+    code: -1,
+  };
 }
 
 export async function handleArtistDetail(id, limit, cookie) {
