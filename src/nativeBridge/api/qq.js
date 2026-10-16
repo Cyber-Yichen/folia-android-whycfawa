@@ -1098,26 +1098,20 @@ export async function handleQQSongLike(id, mid, like, cookieHeader) {
   if (before.liked === wantLiked) return done('already');
 
   // 3) 写：客户端模块那套 comm。
-  // 3) 写：客户端模块那套 comm。目录号先问账号本身 —— 歌单写入我们一直是查
-  // GetPlaylistByUin 拿真实目录号再写的，唯独红心写死了 201；两者不一致时先按账号的来。
+  // 3) 写：客户端模块那套 comm。目录号取账号自己的「我喜欢」目录（现场报告里就是 201，
+  // 与参考实现写死的值一致），只发一次 —— 失败时不要再叠加重试，那只会放大请求。
   const accountDirId = await resolveQQLikedDirId(cookieHeader);
-  const dirIds = [...new Set([accountDirId || 201, 201])];
-  let write = null;
-  let writeData = {};
-  for (const dirId of dirIds) {
-    write = await qqAndroidWriteCall(
-      'music.musicasset.PlaylistDetailWrite',
-      wantLiked ? 'AddSonglist' : 'DelSonglist',
-      { dirId, v_songInfo: [{ songId, songType: 0 }] },
-      cookieHeader,
-    );
-    writeData = (write.data && typeof write.data === 'object') ? write.data : {};
-    noteLibraryStep('qq', 'song-like:write', {
-      ok: write.ok, code: write.code, subcode: write.subcode,
-      retCode: writeData.retCode, msg: write.msg, dirId,
-    });
-    if (write.ok || write.loginRequired) break;
-  }
+  const write = await qqAndroidWriteCall(
+    'music.musicasset.PlaylistDetailWrite',
+    wantLiked ? 'AddSonglist' : 'DelSonglist',
+    { dirId: accountDirId || 201, v_songInfo: [{ songId, songType: 0 }] },
+    cookieHeader,
+  );
+  const writeData = (write.data && typeof write.data === 'object') ? write.data : {};
+  noteLibraryStep('qq', 'song-like:write', {
+    ok: write.ok, code: write.code, subcode: write.subcode,
+    retCode: writeData.retCode, msg: write.msg, dirId: accountDirId || 201,
+  });
   if (write.loginRequired) return loginRequired();
   const writeAccepted = write.ok
     && Number(writeData.retCode) === 0
@@ -2187,27 +2181,21 @@ async function ensureQQAndroidSession(device) {
 }
 
 /**
- * 写入类模块的 musicu 调用：先确保 android 会话在手，再带上它发请求。
- * 写入被拒时刷新一次会话重试一遍 —— 会话过期是这种拒绝的常见来源。
+ * 写入类模块的 musicu 调用：先确保 android 会话与设备指纹在手，再带上它们发请求。
+ *
+ * 以前失败时会刷新会话再重试一遍；现场证明会话、指纹都拿到了、写入仍被同一个业务码拒，
+ * 重试只是把请求数翻倍（用户连点几下就变成十几次写入），所以去掉。
  */
 async function qqAndroidWriteCall(module, method, param, cookieHeader) {
   const device = await getQQRadioDevice();
   await ensureQQQimei(device);
   await ensureQQAndroidSession(device);
   const { candidates } = qqRadioLoginTypes(cookieHeader);
-  const send = () => qqMusicuCall(
+  return qqMusicuCall(
     module, method, param, cookieHeader,
     buildQQRadioComm(cookieHeader, device, candidates[0]),
     { ua: QQ_MUSICU_UA, cookie: buildQQRadioCookie(cookieHeader) },
   );
-  const first = await send();
-  if (first.ok || first.loginRequired) return first;
-  qqAndroidSessionCache = null;
-  delete device.sessionUid;
-  delete device.sessionSid;
-  if (!await ensureQQAndroidSession(device)) return first;
-  noteLibraryStep('qq', 'android-session:retry-write', { module, code: first.code });
-  return send();
 }
 
 /**

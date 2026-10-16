@@ -1523,7 +1523,13 @@ export function useLibraryPlaybackController({
             setStatusMsg({ type: 'success', text: nextLiked ? t('status.liked') : t('status.unliked') || 'Removed from Liked' });
         } catch (error) {
             console.error('Like failed', error);
-            setStatusMsg({ type: 'error', text: t('status.likeFailed') });
+            // 只显示「收藏失败」时用户和排查都看不出原因（provider 被上游业务码拒收就是一例），
+            // 把 provider 给的说明接在后面 —— 它不含凭据，只有失败原因。
+            const detail = error instanceof Error && error.message ? error.message : '';
+            setStatusMsg({
+                type: 'error',
+                text: detail ? `${t('status.likeFailed')} (${detail})` : t('status.likeFailed'),
+            });
         }
     }, [
         currentSong,
