@@ -1,4 +1,4 @@
-import type { SongResult } from '../../types';
+import type { SongResult, UnifiedSong } from '../../types';
 import type { MediaId, OnlineMutationProvider, ProviderCollection } from '../../types/onlineMusic';
 import { OnlineProviderError } from '../../types/onlineMusic';
 import { requestQqSongDetail } from './qqSongDetail';
@@ -57,9 +57,26 @@ const resolveQqSongId = async (song: MediaId | SongResult): Promise<number> => {
         const id = positiveInteger(sourceRef?.providerData?.songId) ?? positiveInteger(song.id);
         if (id !== null) return id;
         const songMid = qqSongMidOf(song);
-        const detail = songMid ? await requestQqSongDetail(songMid) : null;
+        // 只有 songmid 的歌要补查一次详情。查不到时把「查到哪一步」写进错误，否则报告里只看到
+        // 「没有数字 id」，分不清是没有 mid、详情请求失败，还是详情里没有 id。
+        let detail: UnifiedSong | null = null;
+        let detailFailed = false;
+        if (songMid) {
+            try {
+                detail = await requestQqSongDetail(songMid);
+            } catch {
+                detailFailed = true;
+            }
+        }
         const detailId = detail ? positiveInteger(detail.id) : null;
         if (detailId !== null) return detailId;
+        throw new OnlineProviderError(
+            'invalid-response',
+            'QQ song has no numeric song id for a playlist write'
+            + ` (mid=${songMid || 'missing'},`
+            + ` detail=${detailFailed ? 'request-failed' : detail ? 'returned-no-id' : songMid ? 'empty' : 'not-requested'})`,
+            'qq',
+        );
     }
     throw new OnlineProviderError('invalid-response', 'QQ song has no numeric song id for a playlist write', 'qq');
 };

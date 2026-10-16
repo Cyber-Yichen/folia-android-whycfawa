@@ -1097,7 +1097,7 @@ export async function handleQQSongLike(id, mid, like, cookieHeader) {
   if (before.liked === wantLiked) return done('already');
 
   // 3) 写：客户端模块那套 comm。
-  const write = await qqAndroidMusicuCall(
+  const write = await qqAndroidWriteCall(
     'music.musicasset.PlaylistDetailWrite',
     wantLiked ? 'AddSonglist' : 'DelSonglist',
     { dirId: 201, v_songInfo: [{ songId, songType: 0 }] },
@@ -1843,6 +1843,10 @@ function buildQQRadioComm(cookieHeader, device, loginTypeOverride) {
     rom: device.fingerprint,
     tmeLoginType: loginType,
     uin: undefined,
+    // 参考实现的 buildAndroidComm 在拿到 android 会话后会把 uid/sid 一起送出去（见
+    // ensureQQAndroidSession）。读接口不带也能过，写入类模块被严格校验，缺了会被业务码拒收。
+    ...(device.sessionUid ? { uid: device.sessionUid } : {}),
+    ...(device.sessionSid ? { sid: device.sessionSid } : {}),
     ...(musicId ? { qq: musicId } : {}),
   };
 }
@@ -1881,6 +1885,88 @@ async function qqAndroidMusicuCall(module, method, param, cookieHeader) {
     buildQQRadioComm(cookieHeader, device, candidates[0]),
     { ua: QQ_MUSICU_UA, cookie: buildQQRadioCookie(cookieHeader) },
   );
+}
+
+const QQ_ANDROID_SESSION_TTL_MS = 6 * 60 * 60 * 1000;
+let qqAndroidSessionCache = null;
+
+/**
+ * android 会话（uid / sid / vkey）。
+ *
+ * 参考实现有一整套 `refreshAndroidSession`：调 `music.getSession.session` 的 `GetSession`
+ * （**不带凭据**，只带设备），拿回 session.uid / session.sid / vkey 存进设备上下文，之后
+ * `buildAndroidComm` 再把 uid / sid 一起送出去。我们以前两个都没有 —— 读接口不在意，但
+ * 写入类模块（红心、收藏）被严格校验：现场报告里 song-like 的 identity 与 read 都是 code=0，
+ * 只有 write 回 `500026`，正好是「凭证对、设备会话缺」的形态。
+ *
+ * 只缓存在设备上下文里，报告只记「有没有」与长度，不落 uid/sid 原文。
+ */
+async function ensureQQAndroidSession(device) {
+  const fresh = qqAndroidSessionCache
+    && Date.now() - qqAndroidSessionCache.at < QQ_ANDROID_SESSION_TTL_MS;
+  if (fresh) {
+    device.sessionUid = qqAndroidSessionCache.uid;
+    device.sessionSid = qqAndroidSessionCache.sid;
+    return true;
+  }
+  if (device.sessionUid && device.sessionSid && Number.isFinite(device.sessionSavedAt)
+    && Date.now() - device.sessionSavedAt < QQ_ANDROID_SESSION_TTL_MS) {
+    qqAndroidSessionCache = { uid: device.sessionUid, sid: device.sessionSid, at: device.sessionSavedAt };
+    return true;
+  }
+
+  // 匿名 comm：不带 authst / qq / tmeLoginType，与参考实现这一路请求一致。
+  const { tmeLoginType: _loginType, ...anonymousComm } = buildQQRadioComm('', device, undefined);
+  try {
+    const result = await qqMusicuCall(
+      'music.getSession.session', 'GetSession',
+      { uid: device.sessionUid || '', vkey: 0, caller: 0 },
+      '',
+      anonymousComm,
+      { ua: QQ_MUSICU_UA },
+    );
+    const session = (result.data && result.data.session) || {};
+    const uid = String(session.uid || '').trim();
+    const sid = String(session.sid || '').trim();
+    noteLibraryStep('qq', 'android-session:done', {
+      ok: result.ok, code: result.code, hasUid: Boolean(uid), hasSid: Boolean(sid),
+      uidLength: uid.length, sidLength: sid.length,
+    });
+    if (!result.ok || !uid || !sid) return false;
+    device.sessionUid = uid;
+    device.sessionSid = sid;
+    device.sessionVkey = session.vkey;
+    device.sessionSavedAt = Date.now();
+    qqAndroidSessionCache = { uid, sid, at: device.sessionSavedAt };
+    try { await chrome.storage.local.set({ [QQ_RADIO_DEVICE_KEY]: { ...device } }); } catch (_) {}
+    return true;
+  } catch (error) {
+    noteLibraryStep('qq', 'android-session:error', { message: String(error && error.message || error) });
+    return false;
+  }
+}
+
+/**
+ * 写入类模块的 musicu 调用：先确保 android 会话在手，再带上它发请求。
+ * 写入被拒时刷新一次会话重试一遍 —— 会话过期是这种拒绝的常见来源。
+ */
+async function qqAndroidWriteCall(module, method, param, cookieHeader) {
+  const device = await getQQRadioDevice();
+  await ensureQQAndroidSession(device);
+  const { candidates } = qqRadioLoginTypes(cookieHeader);
+  const send = () => qqMusicuCall(
+    module, method, param, cookieHeader,
+    buildQQRadioComm(cookieHeader, device, candidates[0]),
+    { ua: QQ_MUSICU_UA, cookie: buildQQRadioCookie(cookieHeader) },
+  );
+  const first = await send();
+  if (first.ok || first.loginRequired) return first;
+  qqAndroidSessionCache = null;
+  delete device.sessionUid;
+  delete device.sessionSid;
+  if (!await ensureQQAndroidSession(device)) return first;
+  noteLibraryStep('qq', 'android-session:retry-write', { module, code: first.code });
+  return send();
 }
 
 /**
@@ -2043,7 +2129,7 @@ export async function handleQQPlaylistTracksWrite(input, cookieHeader) {
   if (!playlist || !Number.isSafeInteger(dirId) || dirId < 1 || dirId >= 200) return { code: 0, changed: false };
   if (playlist.dirType !== undefined && Number(playlist.dirType) !== 0) return { code: 0, changed: false };
 
-  const write = await qqAndroidMusicuCall(
+  const write = await qqAndroidWriteCall(
     'music.musicasset.PlaylistDetailWrite',
     op === 'add' ? 'AddSonglist' : 'DelSonglist',
     { dirId, v_songInfo: vSongInfo },
@@ -2070,7 +2156,7 @@ export async function handleQQPlaylistSubscribe(input, cookieHeader) {
   // uin 用 str_musicid 的裸值：qqCookieUin 是带 `o` 前缀的 o002774749，参考实现从不拿它当 uin。
   const owner = String(qqCookieMusicId(cookieHeader) || '').trim();
   if (!owner) return qqAuthRequired('playlist-subscribe');
-  const result = await qqAndroidMusicuCall(
+  const result = await qqAndroidWriteCall(
     'music.musicasset.PlaylistFavWrite',
     subscribed ? 'FavPlaylist' : 'CancelFavPlaylist',
     { uin: owner, v_playlistId: [tid] },
@@ -2196,7 +2282,7 @@ export async function handleQQAlbumSubscribe(input, cookieHeader) {
   }
   if (before.subscribed === subscribed) return { code: 0, subscribed };
 
-  const write = await qqAndroidMusicuCall(
+  const write = await qqAndroidWriteCall(
     'music.musicasset.AlbumFavWrite',
     subscribed ? 'FavAlbum' : 'CancelFavAlbum',
     { uin: owner, v_albumMid: [albumMid] },

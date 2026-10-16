@@ -31,17 +31,20 @@ type StubOptions = {
 };
 
 const installFetchStub = (options: StubOptions = {}) => {
-    const calls: Array<{ module: string; method: string; comm: Record<string, unknown>; cookie: string; ua: string }> = [];
+    const calls: Array<{ module: string; method: string; comm: Record<string, unknown>; param: Record<string, unknown>; cookie: string; ua: string }> = [];
     let liked = false;
     vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
         const payload = JSON.parse(String(init?.body || '{}'));
         const module = String(payload?.req_0?.module || '');
         const method = String(payload?.req_0?.method || '');
         const headers = (init?.headers || {}) as Record<string, string>;
-        calls.push({ module, method, comm: payload.comm || {}, cookie: headers.Cookie || '', ua: headers['User-Agent'] || '' });
+        calls.push({ module, method, comm: payload.comm || {}, param: payload?.req_0?.param || {}, cookie: headers.Cookie || '', ua: headers['User-Agent'] || '' });
 
         if (module === 'music.pf_song_detail_svr') {
             return jsonResponse({ code: 0, req_0: { code: 0, data: { track_info: { id: SONG_ID, mid: SONG_MID } } } });
+        }
+        if (module === 'music.getSession.session') {
+            return jsonResponse({ code: 0, req_0: { code: 0, data: { session: { uid: 'DEVICE-UID', sid: 'DEVICE-SID', vkey: 0 } } } });
         }
         if (module === 'music.musicasset.SongFavRead') {
             return jsonResponse({ code: 0, req_0: { code: 0, data: { m_fan: { [SONG_MID]: liked } } } });
@@ -65,6 +68,7 @@ const installFetchStub = (options: StubOptions = {}) => {
         call.module === 'music.pf_song_detail_svr'
         || call.module === 'music.musicasset.SongFavRead'
         || call.module === 'music.musicasset.PlaylistDetailWrite'
+        || call.module === 'music.getSession.session'
     ));
     return relevant;
 };
@@ -86,9 +90,33 @@ describe('QQ song like', () => {
         expect(calls().map(call => `${call.module}.${call.method}`)).toEqual([
             'music.pf_song_detail_svr.get_song_detail_yqq',
             'music.musicasset.SongFavRead.IsSongFanByMid',
+            // 写入前先取 android 会话（参考实现的 refreshAndroidSession）。
+            'music.getSession.session.GetSession',
             'music.musicasset.PlaylistDetailWrite.AddSonglist',
             'music.musicasset.SongFavRead.IsSongFanByMid',
         ]);
+    });
+
+    // 现场报告里 identity 与 read 都是 code=0，只有 write 回 500026 —— 参考实现是带着
+    // android 会话（GetSession 拿到的 uid/sid）发写入的，我们以前两个都没有。
+    it('opens the android session before the write and sends uid/sid with it', async () => {
+        const calls = installFetchStub();
+        const like = await loadHandler();
+        await like(SONG_ID, SONG_MID, true, COOKIE);
+
+        const sessionIndex = calls().findIndex(call => call.module === 'music.getSession.session');
+        const writeIndex = calls().findIndex(call => call.module === 'music.musicasset.PlaylistDetailWrite');
+        expect(sessionIndex).toBeGreaterThanOrEqual(0);
+        expect(writeIndex).toBeGreaterThan(sessionIndex);
+
+        const write = calls()[writeIndex];
+        expect(write.comm.uid).toBe('DEVICE-UID');
+        expect(write.comm.sid).toBe('DEVICE-SID');
+        // 取会话那一步是匿名 comm：不带凭据、也不带 tmeLoginType。
+        const sessionCall = calls()[sessionIndex];
+        expect(sessionCall.param).toEqual({ uid: '', vkey: 0, caller: 0 });
+        expect(sessionCall.comm.authst).toBeUndefined();
+        expect(sessionCall.comm.tmeLoginType).toBeUndefined();
     });
 
     it('sends the android comm, the QQMusic UA and the rebuilt credential cookie', async () => {
@@ -96,8 +124,10 @@ describe('QQ song like', () => {
         const like = await loadHandler();
         await like(SONG_ID, SONG_MID, true, COOKIE);
 
-        expect(calls().length).toBeGreaterThan(0);
-        for (const call of calls()) {
+        // 取会话那一步是匿名 comm（下面单独断言），这里只看带凭据的调用。
+        const credentialCalls = calls().filter(call => call.module !== 'music.getSession.session');
+        expect(credentialCalls.length).toBeGreaterThan(0);
+        for (const call of credentialCalls) {
             expect(call.comm.ct).toBe(11);
             expect(call.comm.tmeAppID).toBe('qqmusic');
             expect(call.comm.qq).toBe('3379082');
