@@ -1743,16 +1743,18 @@ const QQ_LOGIN_REQUIRED_CODE = 1000;
 function qqMusicuRead(json) {
   const gatewayCode = Number(json && json.code);
   if (!json || !Number.isFinite(gatewayCode) || gatewayCode !== 0) {
-    return { ok: false, loginRequired: false, code: gatewayCode, data: null };
+    return { ok: false, loginRequired: false, code: gatewayCode, data: null, subcode: undefined, msg: json && json.msg };
   }
   const block = json.req_0;
-  if (!block || typeof block !== 'object') return { ok: false, loginRequired: false, code: -1, data: null };
+  if (!block || typeof block !== 'object') return { ok: false, loginRequired: false, code: -1, data: null, subcode: undefined, msg: undefined };
   const code = Number(block.code);
   const subcode = block.subcode === undefined ? 0 : Number(block.subcode);
+  // subcode / msg 一起带出来：只看 code=1000 分不清「确实没登录」和「模块拒了这次请求」。
+  const msg = typeof block.msg === 'string' ? block.msg : undefined;
   if (!Number.isFinite(code) || code !== 0 || (Number.isFinite(subcode) && subcode !== 0)) {
-    return { ok: false, loginRequired: code === QQ_LOGIN_REQUIRED_CODE, code, data: null };
+    return { ok: false, loginRequired: code === QQ_LOGIN_REQUIRED_CODE, code, data: null, subcode, msg };
   }
-  return { ok: true, loginRequired: false, code: 0, data: block.data };
+  return { ok: true, loginRequired: false, code: 0, data: block.data, subcode, msg };
 }
 
 async function qqMusicuCall(module, method, param, cookieHeader, extraComm) {
@@ -1784,39 +1786,54 @@ function qqCookieMusicId(cookieHeader) {
   return '';
 }
 
+/** 手机 QQ 扫码通道的 tmeLoginType；微信通道是 1（参考实现的 MOBILE_LOGIN_TYPE / WECHAT_LOGIN_TYPE）。 */
+const QQ_MOBILE_LOGIN_TYPE = 6;
+
 /**
  * 电台（私人 FM）用的 comm。参考实现对「带凭证的 musicu 请求」统一用 android 形态
- * （ct=11、cv/v=14090008、chid、tmeAppID、qq=音乐账号 id、authst=musickey），
- * 而我们的 comm 是网页形态（ct=19/24、没有 qq）。日推与推荐歌单用网页 comm 也能过，
- * 但电台模块不认，会回 code 1000（登录失效），桥再翻成 AUTH_REQUIRED —— 这正是
- * 诊断里 user_guess_you_like 回 __foliaBridgeError 而另外两个正常的原因。
+ * （ct=11、cv/v=14090008、chid、tmeAppID、qq=音乐账号 id、authst=musickey、tmeLoginType），
+ * 而我们的 comm 是网页形态（ct=19/24、没有 qq、没有 tmeLoginType）。
+ * 日推与推荐歌单用网页 comm 也能过，但电台模块不认，会回 code 1000（登录失效）。
+ *
+ * tmeLoginType 必须在这里补默认值：QQ 扫码登录会把这个 cookie 删掉（防止上一条微信会话的
+ * login_type=2 / tmeLoginType=1 串味），删掉之后 musicu 请求就一个通道标记都没有了。
  */
 function buildQQRadioComm(cookieHeader) {
+  const jar = parseCookieString(cookieHeader);
   const musicId = qqCookieMusicId(cookieHeader);
+  const explicit = Number(jar.tmeLoginType);
+  const loginType = Number.isFinite(explicit) && explicit > 0 ? explicit : QQ_MOBILE_LOGIN_TYPE;
   return {
     ct: 11,
     cv: 14090008,
     v: 14090008,
     chid: '10003505',
     tmeAppID: 'qqmusic',
+    tmeLoginType: loginType,
     ...(musicId ? { qq: musicId } : {}),
   };
 }
 
 /** 私人 FM（猜你喜欢）。上游实测 num 再大也只回 5 首，参数照抄。 */
 export async function handleQQGuessYouLike(cookieHeader) {
+  const comm = buildQQRadioComm(cookieHeader);
   const result = await qqMusicuCall(
     'music.radioProxy.MbTrackRadioSvr', 'get_radio_track',
     { id: 99, firstplay: 1, num: 15 },
     cookieHeader,
-    buildQQRadioComm(cookieHeader),
+    comm,
   );
-  // 记下上游码：只看到 __foliaBridgeError 时无法区分「上游说没登录」和「模块不认 comm」。
+  // 记下上游码与实际发出去的通道字段：只看到 __foliaBridgeError 时无法区分
+  // 「上游说没登录」和「模块不认 comm」。
   noteLibraryStep('qq', 'guess-you-like:result', {
     ok: result.ok,
     code: result.code,
+    subcode: result.subcode,
+    msg: result.msg,
     loginRequired: result.loginRequired,
     tracks: Array.isArray(result.data && result.data.tracks) ? result.data.tracks.length : 0,
+    hasMusicId: Boolean(comm.qq),
+    loginType: comm.tmeLoginType,
   });
   if (!result.ok) {
     return result.loginRequired
