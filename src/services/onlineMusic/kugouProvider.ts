@@ -970,19 +970,24 @@ const KUGOU_LIKED_TRACK_CACHE_TTL_MS = 10_000;
 const kugouLikedTrackCache = new Map<string, { fetchedAt: number; songs: UnifiedSong[] }>();
 
 /**
- * KuGou 写入是否被上游回绝。
+ * KuGou 写入响应是否是「干净的成功」。
  *
- * transport 只按 HTTP 状态判成败，而 KuGou 会用 `200 + {status: 0, error_code: …}` 拒绝一次
- * 写入（例如设备校验 20028）。不看这个码就会把心形点亮、提示「收藏成功」，服务端却没有这首歌。
- * 返回回绝码；`undefined` 表示没有明确的回绝信号。
+ * transport 只按 HTTP 状态判成败，而 KuGou 会用 `200 + {status:0, error_code:…}` 回绝一次写入
+ * （例如设备校验 20028），也会回空体。三种情况必须分开：
+ *   - `error_code` 非 0 → 上游业务拒绝；
+ *   - `status` 不是 1  → 上游拒绝；
+ *   - 两者都没有（空体 / 非 JSON）→ 不能当成成功，否则又回到「假收藏成功」。
+ * 只有 `status:1, error_code:0` 这类才是干净成功。
  */
-const kugouWriteRefusalCode = (body: unknown): number | undefined => {
-    const record = (body && typeof body === 'object') ? body as Record<string, unknown> : {};
+const evaluateKugouWrite = (body: unknown): { ok: boolean; code?: number; reason?: string } => {
+    const record = (body && typeof body === 'object') ? body as Record<string, unknown> : null;
+    if (!record) return { ok: false, reason: 'empty-response' };
     const errorCode = Number(record.error_code ?? record.errcode);
-    if (Number.isFinite(errorCode) && errorCode !== 0) return errorCode;
+    if (Number.isFinite(errorCode) && errorCode !== 0) return { ok: false, code: errorCode, reason: 'error_code' };
     const status = Number(record.status);
-    if (Number.isFinite(status) && status === 0) return status;
-    return undefined;
+    if (Number.isFinite(status) && status !== 1) return { ok: false, code: status, reason: 'status' };
+    if (!Number.isFinite(status) && !Number.isFinite(errorCode)) return { ok: false, reason: 'no-status-field' };
+    return { ok: true };
 };
 
 // KuGou's playlist entry `fileid` is local to one playlist, unlike the global audio hash. The
@@ -1699,37 +1704,44 @@ export const kugouProvider: OnlineMusicProvider = {
                     listid: String(listId),
                     data: getKugouTrackAddData(song),
                 });
-                // transport 只看 HTTP 状态：KuGou 可以用 200 + {status:0, error_code:…} 回绝，
-                // 不校验就会把心形点亮并提示「收藏成功」，而服务端其实没有这首歌（现场问题）。
-                const refusedCode = kugouWriteRefusalCode(added);
-                if (refusedCode !== undefined) {
+                const verdict = evaluateKugouWrite(added);
+                if (!verdict.ok) {
                     throw new OnlineProviderError(
                         'network',
-                        `KuGou playlist_tracks_add rejected (error_code=${refusedCode})`,
+                        `KuGou playlist_tracks_add not accepted (${verdict.reason}${verdict.code !== undefined ? `=${verdict.code}` : ''})`,
                         'kugou',
                         undefined,
                         undefined,
                         undefined,
-                        { stage: 'upstream', upstreamCode: refusedCode },
+                        verdict.code !== undefined
+                            ? { stage: 'upstream', upstreamCode: verdict.code }
+                            : { stage: 'upstream' },
                     );
                 }
                 if (globalCollectionId) kugouLikedTrackCache.delete(String(globalCollectionId));
 
-                // 写完必须再读确认：宁可报「失败」也不能假报成功。
-                // 收藏歌单可能很大，所以先看 10 秒窗口的缓存，再用 forceRefresh 复核一次。
+                // 复查是**尽力确认**，不是否决条件：上游明确接受了这次写入（status:1/error_code:0），
+                // 而它的读取端有延迟 —— 现场实测写成功后 250ms 读回仍是旧列表（8 首）。
+                // 拿读回否决一次已被接受的写入只会让心形来回跳；这里改成重试几次并把结果记进留痕。
                 if (globalCollectionId) {
                     const likedCollectionId = String(globalCollectionId);
                     const targetHashForAdd = getKugouTrackHash(song);
-                    const hasTrack = async (forceRefresh: boolean) => (
-                        await getKugouPlaylistTrackSongs(likedCollectionId, { forceRefresh })
-                    ).some(track => getKugouTrackHash(track) === targetHashForAdd);
-                    const applied = (await hasTrack(false)) || (await hasTrack(true));
-                    if (!applied) {
-                        throw new OnlineProviderError(
-                            'invalid-response',
-                            'KuGou liked playlist did not gain the track after add',
-                            'kugou',
-                        );
+                    let confirmed = false;
+                    for (let attempt = 0; attempt < 3 && !confirmed; attempt += 1) {
+                        if (attempt) await new Promise(resolve => setTimeout(resolve, 500));
+                        const tracks = await getKugouPlaylistTrackSongs(likedCollectionId, { forceRefresh: true });
+                        confirmed = tracks.some(track => getKugouTrackHash(track) === targetHashForAdd);
+                        noteLibraryStep('kugou', 'playlist:tracks:add:verify', {
+                            attempt: attempt + 1,
+                            tracks: tracks.length,
+                            confirmed,
+                        });
+                    }
+                    if (!confirmed) {
+                        console.info('[KugouProvider] like:unconfirmed-by-read-back', {
+                            hash: targetHashForAdd,
+                            collection: likedCollectionId,
+                        });
                     }
                 }
                 return;

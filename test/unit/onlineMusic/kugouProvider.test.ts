@@ -1511,8 +1511,8 @@ describe('kugouProvider', () => {
                     }],
                 },
             })
-            .mockResolvedValueOnce({})
-            // 写完必须读回确认：服务端真的多了这首歌才算成功。
+            .mockResolvedValueOnce({ status: 1, error_code: 0 })
+            // 写完复查（尽力确认）：服务端真的多了这首歌。
             .mockResolvedValueOnce({
                 data: { info: [{ hash: 'abc123', name: 'Song 1', album_id: 12, mixsongid: 34 }] },
             });
@@ -1559,7 +1559,9 @@ describe('kugouProvider', () => {
     });
 
     // 上游自报成功、读回却没有这首歌：同样必须报失败，否则心形亮着而收藏里没有。
-    it('fails the like when the liked playlist did not gain the track', async () => {
+    // 读回有延迟：上游明确接受（status:1/error_code:0）而读回还没看到时，不能否决这次写入 ——
+    // 只记「未确认」。现场实测：写成功 250ms 后读回仍是旧列表（8 首），拿它否决只会让心形来回跳。
+    it('accepts an upstream-accepted add even when the read-back has not caught up', async () => {
         requestMock
             .mockResolvedValueOnce({
                 data: {
@@ -1568,7 +1570,29 @@ describe('kugouProvider', () => {
                         source: 1,
                         listid: 2,
                         name: '我喜欢',
-                        global_collection_id: 'collection_3_liked_missing',
+                        global_collection_id: 'collection_3_liked_lagging',
+                    }],
+                },
+            })
+            .mockResolvedValueOnce({ status: 1, error_code: 0 })
+            .mockResolvedValue({ data: { info: [] } });
+
+        const song = normalizeKugouSong({ hash: 'abc123', name: 'Song 1', album_id: 12, mixsongid: 34 });
+
+        await expect(kugouProvider.mutations?.likeSong?.(song, true)).resolves.toBeUndefined();
+    });
+
+    // 但「干净成功」是硬条件：空响应 / 非 0 码不能被当成成功（那正是「假收藏成功」的老问题）。
+    it('fails the like when the add response is not a clean success', async () => {
+        requestMock
+            .mockResolvedValueOnce({
+                data: {
+                    info: [{
+                        type: 0,
+                        source: 1,
+                        listid: 2,
+                        name: '我喜欢',
+                        global_collection_id: 'collection_3_liked_empty',
                     }],
                 },
             })
@@ -1578,7 +1602,7 @@ describe('kugouProvider', () => {
         const song = normalizeKugouSong({ hash: 'abc123', name: 'Song 1', album_id: 12, mixsongid: 34 });
 
         await expect(kugouProvider.mutations?.likeSong?.(song, true)).rejects.toMatchObject({
-            code: 'invalid-response',
+            code: 'network',
         });
     });
 
@@ -2006,7 +2030,7 @@ describe('kugouProvider', () => {
             .mockResolvedValueOnce({
                 data: { info: [{ type: 0, source: 1, listid: 2, name: '我喜欢' }] },
             })
-            .mockResolvedValueOnce({});
+            .mockResolvedValueOnce({ status: 1, error_code: 0 });
         await kugouProvider.mutations?.likeSong?.(song, true);
 
         // 残缺引用要是被缓存下来，下一次取消收藏就会跳过 user_playlist 直接失败，一直粘到登出。
@@ -2015,7 +2039,7 @@ describe('kugouProvider', () => {
             .mockResolvedValueOnce({
                 data: { info: [{ type: 0, source: 1, listid: 2, name: '我喜欢', global_collection_id: 'collection_3_recovered' }] },
             })
-            .mockResolvedValueOnce({});
+            .mockResolvedValueOnce({ status: 1, error_code: 0 });
         await kugouProvider.mutations?.likeSong?.(song, false, { likedFileId: 987 });
 
         expect(requestMock).toHaveBeenNthCalledWith(1, 'user_playlist', expect.anything());
