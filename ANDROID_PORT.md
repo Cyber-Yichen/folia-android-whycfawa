@@ -113,7 +113,7 @@ QQ 的同一套形状也用于专辑订阅与歌单写入。
 - `npm run build:capacitor` 已通过
 - `npx cap sync android` 已通过
 - `gradlew assembleDebug` 已通过，产出 `android/app/build/outputs/apk/debug/app-debug.apk`
-- APK 包名 `top.izuna.foliamajor`，当前版本 `0.7.20-android.188`（`versionCode` 226），minSdk 24，targetSdk 36
+- APK 包名 `top.izuna.foliamajor`，当前版本 `0.7.20-android.189`（`versionCode` 227），minSdk 24，targetSdk 36
 
 ## 尚未完成
 
