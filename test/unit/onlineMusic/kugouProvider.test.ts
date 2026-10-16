@@ -1629,7 +1629,7 @@ describe('kugouProvider', () => {
                     }],
                 },
             })
-            .mockResolvedValueOnce({});
+            .mockResolvedValueOnce({ status: 1, error_code: 0 });
 
         const song = normalizeKugouSong({
             hash: 'abc123',
@@ -1712,11 +1712,40 @@ describe('kugouProvider', () => {
             mixsongid: 34,
         });
 
-        // 服务端本来就没有这首歌，目标状态已经达成：不发删除请求，也不能抛错把心形卡在点亮状态。
-        await expect(kugouProvider.mutations?.likeSong?.(song, false)).resolves.toBeUndefined();
+        // 读回一直看不到这首歌时**不能**当成「本来就没有」直接返回成功：那正是现场
+        // 「显示已取消但 APP 里还有」的来源（读取端有延迟，会漏删）。宁可报失败让用户重试。
+        await expect(kugouProvider.mutations?.likeSong?.(song, false)).rejects.toMatchObject({
+            code: 'invalid-response',
+        });
         expect(requestMock).not.toHaveBeenCalledWith('playlist_tracks_del', expect.anything());
-        // 下结论之前必须绕过 10 秒缓存重扫一次。
-        expect(requestMock.mock.calls.filter(([endpoint]) => endpoint === 'playlist_track_all')).toHaveLength(2);
+    });
+
+    // 延迟场景：第一次读不到、重试后读到了 —— 必须照样删掉，而不是早早判定「不存在」。
+    it('retries the lookup before giving up on an unlike', async () => {
+        requestMock
+            .mockResolvedValueOnce({
+                data: {
+                    info: [{
+                        type: 0,
+                        source: 1,
+                        listid: 2,
+                        name: '我喜欢',
+                        global_collection_id: 'collection_3_liked_test_lag',
+                    }],
+                },
+            })
+            .mockResolvedValueOnce({ data: { count: 0, songs: [] } })
+            .mockResolvedValueOnce({
+                data: {
+                    count: 1,
+                    songs: [{ hash: 'abc123', name: 'Song 1', fileid: 987 }],
+                },
+            })
+            .mockResolvedValueOnce({ status: 1, error_code: 0 });
+
+        const song = normalizeKugouSong({ hash: 'abc123', name: 'Song 1', album_id: 12, mixsongid: 34 });
+        await expect(kugouProvider.mutations?.likeSong?.(song, false)).resolves.toBeUndefined();
+        expect(requestMock).toHaveBeenCalledWith('playlist_tracks_del', { listid: '2', fileids: '987' });
     });
 
     it('rejects unlike when the liked playlist has no global collection id', async () => {
@@ -1908,7 +1937,7 @@ describe('kugouProvider', () => {
                     authors: [{ author_id: '789658', author_name: 'HOYO-MiX' }],
                 }],
             })
-            .mockResolvedValueOnce({});
+            .mockResolvedValueOnce({ status: 1, error_code: 0 });
 
         await kugouProvider.mutations?.subscribeAlbum?.('164446399', true);
 
