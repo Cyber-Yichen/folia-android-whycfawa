@@ -17,6 +17,7 @@ export const KUGOU_OPERATIONS = [
     'album_detail', 'album_songs', 'artist_detail', 'artist_albums', 'artist_audios',
     'everyday_recommend', 'everyday_history', 'personal_fm', 'top_card_youth', 'playlist_add',
     'playlist_del', 'playlist_tracks_add', 'playlist_tracks_del',
+    'playlist_track_all_new',
 ] as const;
 
 export type KugouOperation = typeof KUGOU_OPERATIONS[number];
@@ -58,6 +59,7 @@ const ENDPOINTS: Record<KugouOperation, string> = {
     playlist_del: '/playlist/del',
     playlist_tracks_add: '/playlist/tracks/add',
     playlist_tracks_del: '/playlist/tracks/del',
+    playlist_track_all_new: '/playlist/track/all/new',
 };
 
 const getWebApiBase = (): string => {

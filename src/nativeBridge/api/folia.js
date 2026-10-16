@@ -79,6 +79,7 @@ import {
   handleKGPlaylistDel,
   handleKGPlaylistTracksAdd,
   handleKGPlaylistTracksDel,
+  handleKGPlaylistTracksNew,
   handleKGUserCloud,
 } from './kugou.js';
 import { handleBodianRequest } from './bodian.js';
@@ -1306,6 +1307,7 @@ async function handleFoliaKugouRequest(input, url) {
   if (operation === 'playlist_del') return await handleKGPlaylistDel(params, cookie);
   if (operation === 'playlist_tracks_add') return await handleKGPlaylistTracksAdd(params, cookie);
   if (operation === 'playlist_tracks_del') return await handleKGPlaylistTracksDel(params, cookie);
+  if (operation === 'playlist_track_all_new') return await handleKGPlaylistTracksNew(params, cookie);
   if (operation === 'youth_union_vip') return await getKGYouthUnionVip(cookie);
   if (operation === 'youth_day_vip') return await claimKGYouthDayVip(cookie, params.receive_day);
   if (operation === 'youth_day_vip_upgrade') {

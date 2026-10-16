@@ -1780,14 +1780,51 @@ export const kugouProvider: OnlineMusicProvider = {
             // up in the liked playlist by hash is required; sending another playlist's row id deletes
             // whichever liked song happens to share that id.
             const likedCollectionId = String(globalCollectionId);
-            const findLikedFileId = async (forceRefresh: boolean): Promise<MediaId | undefined> => {
-                const likedTracks = await getKugouPlaylistTrackSongs(likedCollectionId, { forceRefresh });
-                const likedTrack = likedTracks.find(track => getKugouTrackHash(track) === targetHash);
-                const fileId = likedTrack?.sourceRef?.kind === 'online'
-                    ? likedTrack.sourceRef.providerData?.fileId
+            const fileIdOf = (track: UnifiedSong | undefined): MediaId | undefined => {
+                const fileId = track?.sourceRef?.kind === 'online'
+                    ? track.sourceRef.providerData?.fileId
                     : undefined;
                 if (typeof fileId !== 'string' && typeof fileId !== 'number') return undefined;
                 return String(fileId) === '' ? undefined : fileId;
+            };
+            const findLikedFileId = async (forceRefresh: boolean): Promise<MediaId | undefined> => {
+                const likedTracks = await getKugouPlaylistTrackSongs(likedCollectionId, { forceRefresh });
+                let likedTrack = likedTracks.find(track => getKugouTrackHash(track) === targetHash);
+                let fileId = fileIdOf(likedTrack);
+                // 云文件列表（按 global_collection_id）产出的行**常常没有 fileid**，而取消收藏必须靠
+                // fileid 定位行。这时改问 App 实际用的端点 /v4/get_list_all_file_v3（按 listid 取）。
+                if (fileId === undefined) {
+                    const alt = await Promise.resolve(requestKugou('playlist_track_all_new', {
+                        listid: String(listId), page: 1, pagesize: 300,
+                    })).catch(() => null);
+                    const altRows = Array.isArray((alt as { data?: { songs?: unknown[] } })?.data?.songs)
+                        ? (alt as { data: { songs: unknown[] } }).data.songs
+                        : (Array.isArray((alt as { data?: { info?: unknown[] } })?.data?.info)
+                            ? (alt as { data: { info: unknown[] } }).data.info
+                            : []);
+                    const altSongs = altRows.map(row => normalizeKugouSong(row as Record<string, unknown>));
+                    likedTrack = altSongs.find(track => getKugouTrackHash(track) === targetHash);
+                    fileId = fileIdOf(likedTrack);
+                    noteLibraryStep('kugou', 'playlist:tracks:del:alt-source', {
+                        rows: altSongs.length,
+                        hashFound: Boolean(likedTrack),
+                        fileIdFound: fileId !== undefined,
+                    });
+                }
+                // 定位失败有两种完全不同的原因，必须分得开：读回来的列表里**没有这个哈希**，
+                // 还是有这个哈希但**行里没有 fileId**（字段名不对/端点没返回）。
+                noteLibraryStep('kugou', 'playlist:tracks:del:match', {
+                    refresh: forceRefresh,
+                    tracks: likedTracks.length,
+                    hashFound: likedTracks.some(track => getKugouTrackHash(track) === targetHash),
+                    fileIdFound: fileId !== undefined,
+                    targetHash: targetHash.slice(0, 8),
+                    listHashes: likedTracks.slice(0, 3).map(track => getKugouTrackHash(track).slice(0, 8)).join(','),
+                    rowKeys: likedTrack?.sourceRef?.kind === 'online'
+                        ? Object.keys(likedTrack.sourceRef.providerData || {}).slice(0, 10).join(',')
+                        : '',
+                });
+                return fileId;
             };
 
             // 缓存里没有就强制重拉，并**重试几次**：KuGou 的读取端有延迟（现场实测写入被接受后

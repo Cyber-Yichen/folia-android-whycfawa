@@ -4328,6 +4328,44 @@ export async function handleKGPlaylistTracksDel(params, cookieHeader) {
 }
 
 /**
+ * `/v4/get_list_all_file_v3`：App 当前使用的**云歌单歌曲**端点（按 listid + 分页）。
+ *
+ * 与 `/v4/get_list_all_file`（global_collection_id 的云文件列表）不同：这条按 listid 取，
+ * 而且行里带 `fileid` —— 「取消收藏」必须靠 fileid 定位要删的那一行。
+ * 现场：收藏能成功、取消时报「读回没看到这首歌」，就是因为读取端产出的行没有 fileid。
+ */
+export async function handleKGPlaylistTracksNew(params, cookieHeader) {
+  cookieHeader = cookieHeader || await getKGCookie();
+  const auth = kgRequirePlaylistAuth(cookieHeader);
+  if (!auth) return { status: 0, error_code: 401, data: {} };
+  const listId = String(kgParam(params, 'listid', '') || '').trim();
+  if (!listId) return { status: 0, error_code: -1, data: {} };
+  const page = Math.max(1, Number(kgParam(params, 'page', 1)) || 1);
+  const pagesize = Math.max(1, Math.min(300, Number(kgParam(params, 'pagesize', 300)) || 300));
+  const body = await kgPostAndroidSigned(
+    KG_CLOUDLIST_GATEWAY, '/v4/get_list_all_file_v3', cookieHeader,
+    {
+      listid: Number(listId) || listId,
+      userid: auth.userId,
+      type: 0,
+      page,
+      pagesize,
+      area_code: 1,
+      allplatform: 1,
+      show_cover: 1,
+      token: auth.token,
+    },
+    { last_time: Math.floor(Date.now() / 1000), last_area: 'gztx', userid: auth.userId, token: auth.token },
+    KG_CLOUDLIST_ROUTER,
+    { trace: 'playlist:tracks:new' },
+  );
+  noteLibraryStep('kugou', 'playlist:tracks:new:done', {
+    page, pagesize, status: body && body.status, errorCode: body && body.error_code,
+  });
+  return body || { status: 0, error_code: -1, bridgeEmptyResponse: true, data: {} };
+}
+
+/**
  * `/user/cloud`：用户云盘列表。
  *
  * 端点与参数按 KuGouMusicApi 的 user_cloud module：自定义 host mcloudservice，只带
