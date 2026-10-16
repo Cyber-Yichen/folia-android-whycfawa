@@ -1773,14 +1773,56 @@ const qqBridgeFailure = (where, code) => ({
   message: `QQ ${where} failed (code ${code})`,
 });
 
+/** 加密 / 字符串形态的音乐账号 id：android comm 的 `qq` 用它，不是 QQ 号本身。 */
+function qqCookieMusicId(cookieHeader) {
+  const obj = parseCookieString(cookieHeader);
+  const candidates = [obj.str_musicid, obj.musicid, obj.encryptUin, obj.encrypt_uin];
+  for (const candidate of candidates) {
+    const value = String(candidate || '').trim();
+    if (value && value !== '0') return value;
+  }
+  return '';
+}
+
+/**
+ * 电台（私人 FM）用的 comm。参考实现对「带凭证的 musicu 请求」统一用 android 形态
+ * （ct=11、cv/v=14090008、chid、tmeAppID、qq=音乐账号 id、authst=musickey），
+ * 而我们的 comm 是网页形态（ct=19/24、没有 qq）。日推与推荐歌单用网页 comm 也能过，
+ * 但电台模块不认，会回 code 1000（登录失效），桥再翻成 AUTH_REQUIRED —— 这正是
+ * 诊断里 user_guess_you_like 回 __foliaBridgeError 而另外两个正常的原因。
+ */
+function buildQQRadioComm(cookieHeader) {
+  const musicId = qqCookieMusicId(cookieHeader);
+  return {
+    ct: 11,
+    cv: 14090008,
+    v: 14090008,
+    chid: '10003505',
+    tmeAppID: 'qqmusic',
+    ...(musicId ? { qq: musicId } : {}),
+  };
+}
+
 /** 私人 FM（猜你喜欢）。上游实测 num 再大也只回 5 首，参数照抄。 */
 export async function handleQQGuessYouLike(cookieHeader) {
   const result = await qqMusicuCall(
     'music.radioProxy.MbTrackRadioSvr', 'get_radio_track',
     { id: 99, firstplay: 1, num: 15 },
     cookieHeader,
+    buildQQRadioComm(cookieHeader),
   );
-  if (!result.ok) return result.loginRequired ? qqAuthRequired('guess-you-like') : { code: 0, songs: [] };
+  // 记下上游码：只看到 __foliaBridgeError 时无法区分「上游说没登录」和「模块不认 comm」。
+  noteLibraryStep('qq', 'guess-you-like:result', {
+    ok: result.ok,
+    code: result.code,
+    loginRequired: result.loginRequired,
+    tracks: Array.isArray(result.data && result.data.tracks) ? result.data.tracks.length : 0,
+  });
+  if (!result.ok) {
+    return result.loginRequired
+      ? { ...qqAuthRequired('guess-you-like'), message: `QQ guess-you-like: login required (code ${result.code})` }
+      : { code: 0, songs: [] };
+  }
   const tracks = Array.isArray(result.data && result.data.tracks) ? result.data.tracks : [];
   return { code: 0, songs: tracks };
 }
