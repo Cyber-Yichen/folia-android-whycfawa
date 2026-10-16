@@ -1110,12 +1110,63 @@ export async function handleQQSongLike(id, mid, like, cookieHeader) {
   if (!before.ok) return before.loginRequired ? loginRequired() : fail(before.code, 'read');
   if (before.liked === wantLiked) return done('already');
 
-  // 3) 先走 legacy CGI（fcg_music_add2songdir / delbatchsong）。
+  // 3) 写入候选端点，逐个试、每个都用再读关系确认（写接口自报成功不算数）。
   //
-  // 顺序是证据驱动的：公开实现 jsososo/QQMusicApi 的「加入我喜欢」就是这条 CGI + g_tk=5381，
-  // 而 musicasset 的 PlaylistDetailWrite 在这台机器/这个账号上一直回业务码 500026
-  // （凭证、设备、指纹、会话、目录号全部对齐之后仍然如此）。CGI 自报成功不算数 ——
-  // 一律靠再读关系确认。
+  // 现场：PlaylistDetailWrite/AddSonglist 在 g_tk 与网页 comm 都对齐后回业务码 80105 ——
+  // 参考实现的码表把 80105 记为「第三方回报：往「我喜欢」加歌被拒，参数还是权限问题未知」，
+  // 也就是连它也没有解法。所以再试一个**从未被公平测过**的端点：SongFavWrite/AddSong。
+  // 它以前是在没有 g_tk、没有网页 comm 的形状下发出去的（那种形状连 gateway 都过不了），
+  // 现在用同一套正确形状重试。
+  const accountDirId = await resolveQQLikedDirId(cookieHeader);
+  const dirId = accountDirId || 201;
+  const uin = qqCookieUin(cookieHeader);
+  const attempts = [
+    {
+      via: 'PlaylistDetailWrite',
+      run: () => qqMusicassetWriteCall(
+        'music.musicasset.PlaylistDetailWrite',
+        wantLiked ? 'AddSonglist' : 'DelSonglist',
+        { dirId, v_songInfo: [{ songId, songType: 0 }] },
+        cookieHeader,
+      ),
+    },
+    {
+      via: 'SongFavWrite',
+      run: () => qqMusicassetWriteCall(
+        'music.musicasset.SongFavWrite',
+        wantLiked ? 'AddSong' : 'DelSong',
+        {
+          uin: Number(uin) || uin,
+          v_uin: Number(uin) || uin,
+          dirId,
+          ids: [songId],
+          songTypes: [0],
+        },
+        cookieHeader,
+      ),
+    },
+  ];
+
+  let lastCode = 0;
+  let anyAccepted = false;
+  for (const attempt of attempts) {
+    const write = await attempt.run();
+    const writeData = (write.data && typeof write.data === 'object') ? write.data : {};
+    noteLibraryStep('qq', 'song-like:write', {
+      via: attempt.via,
+      ok: write.ok, code: write.code, subcode: write.subcode,
+      retCode: writeData.retCode, msg: write.msg, dirId,
+    });
+    if (write.loginRequired) return loginRequired();
+    lastCode = write.ok ? (writeData.retCode || -1) : write.code;
+    // 上游自报接受、关系却没变，与「上游直接拒」是两回事，留痕要分得开。
+    if (write.ok && Number(writeData.retCode) === 0) anyAccepted = true;
+    const after = await readLiked();
+    if (after.ok && after.liked === wantLiked) return done(attempt.via);
+  }
+
+  // 4) 最后才试 legacy CGI（fcg_music_add2songdir / delbatchsong）。现场它一直回 403，
+  // 但它是参考实现给「musicu 写接口不可用」时留下的退路，留着不亏；同样靠再读确认。
   const legacy = wantLiked
     ? await qqAddToFavByMid(songMid, cookieHeader).catch((error) => ({ ok: false, error: String(error && error.message || error) }))
     : await qqDelFromFavById(songId, cookieHeader).catch((error) => ({ ok: false, error: String(error && error.message || error) }));
@@ -1127,32 +1178,11 @@ export async function handleQQSongLike(id, mid, like, cookieHeader) {
   });
   if (afterLegacy.ok && afterLegacy.liked === wantLiked) return done(wantLiked ? 'add2songdir' : 'delbatchsong');
 
-  // 4) 再试 musicasset 的写入。目录号取账号自己的「我喜欢」目录（现场报告里就是 201），
-  // 只发一次 —— 失败时不要再叠加重试，那只会放大请求。
-  const accountDirId = await resolveQQLikedDirId(cookieHeader);
-  const write = await qqMusicassetWriteCall(
-    'music.musicasset.PlaylistDetailWrite',
-    wantLiked ? 'AddSonglist' : 'DelSonglist',
-    { dirId: accountDirId || 201, v_songInfo: [{ songId, songType: 0 }] },
-    cookieHeader,
-  );
-  const writeData = (write.data && typeof write.data === 'object') ? write.data : {};
-  noteLibraryStep('qq', 'song-like:write', {
-    ok: write.ok, code: write.code, subcode: write.subcode,
-    retCode: writeData.retCode, msg: write.msg, dirId: accountDirId || 201,
-  });
-  if (write.loginRequired) return loginRequired();
-  const writeAccepted = write.ok
-    && Number(writeData.retCode) === 0
-    && writeData.result
-    && typeof writeData.result === 'object';
-  const afterPrimary = await readLiked();
-  if (writeAccepted && afterPrimary.ok && afterPrimary.liked === wantLiked) return done('PlaylistDetailWrite');
-
   return fail(
-    write.ok ? (afterPrimary.ok ? -1 : afterPrimary.code) : write.code,
-    writeAccepted ? 'verify-mismatch' : 'write-rejected',
-    { retCode: writeData.retCode, legacyCode: legacy && legacy.code },
+    anyAccepted ? -1 : lastCode,
+    anyAccepted ? 'verify-mismatch' : 'write-rejected',
+    // retCode 是最后一个写入端点的上游回码；verifyMismatch 表示「上游说接受、关系没变」。
+    { dirId, retCode: lastCode, verifyMismatch: anyAccepted, legacyCode: legacy && legacy.code },
   );
 }
 

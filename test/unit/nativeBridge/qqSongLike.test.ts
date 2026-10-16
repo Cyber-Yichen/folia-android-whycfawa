@@ -100,9 +100,7 @@ describe('QQ song like', () => {
             'music.pf_song_detail_svr.get_song_detail_yqq',
             // 读当前关系
             'music.musicasset.SongFavRead.IsSongFanByMid',
-            // 先走 legacy CGI（c.y.qq.com，不在这个过滤里），再读一次确认它有没有生效
-            'music.musicasset.SongFavRead.IsSongFanByMid',
-            // 没生效才走 musicasset：先问账号真实的「我喜欢」目录号
+            // 先问账号真实的「我喜欢」目录号，再写（legacy CGI 现在是最后才试）
             'music.musicasset.PlaylistBaseRead.GetPlaylistByUin',
             'music.musicasset.PlaylistDetailWrite.AddSonglist',
             // 写完再读确认
@@ -151,7 +149,8 @@ describe('QQ song like', () => {
     // g_tk 是 QQ 网页 CGI 的 CSRF token，算法只认 skey/p_skey。以前拿 musickey（qm_keyst）
     // 去算，得到的是错的 g_tk，CGI 直接回 403；没有 skey 时该用 5381（公开实现就固定用它）。
     it('sends the legacy CGI with g_tk=5381 when the session has no skey', async () => {
-        installFetchStub();
+        // legacy 现在是最后一步：两个 musicasset 端点都被拒之后才走到它。
+        installFetchStub({ acceptWrite: false });
         const like = await loadHandler();
         await like(SONG_ID, SONG_MID, true, COOKIE);
 
