@@ -2440,8 +2440,18 @@ export async function handleQQPlaylistTracksWrite(input, cookieHeader) {
   const rows = Array.isArray(owned.data && owned.data.v_playlist) ? owned.data.v_playlist : [];
   const playlist = rows.find((row) => Number(row && row.tid) === tid);
   const dirId = Number(playlist && playlist.dirId);
-  if (!playlist || !Number.isSafeInteger(dirId) || dirId < 1 || dirId >= 200) return { code: 0, changed: false };
-  if (playlist.dirType !== undefined && Number(playlist.dirType) !== 0) return { code: 0, changed: false };
+  // 「加入歌单」以前完全不留痕：写入被拒时只回 changed:false，报告里看不出上游给了什么码。
+  // 红心那条路径每一步都有码可查，这条同样要能查 —— 否则拿它做对照实验等于白测。
+  if (!playlist || !Number.isSafeInteger(dirId) || dirId < 1 || dirId >= 200) {
+    noteLibraryStep('qq', 'playlist-tracks:guard', {
+      tid, found: Boolean(playlist), dirId: Number.isSafeInteger(dirId) ? dirId : 0, rows: rows.length,
+    });
+    return { code: 0, changed: false };
+  }
+  if (playlist.dirType !== undefined && Number(playlist.dirType) !== 0) {
+    noteLibraryStep('qq', 'playlist-tracks:guard', { tid, dirId, dirType: Number(playlist.dirType) });
+    return { code: 0, changed: false };
+  }
 
   const write = await qqMusicassetWriteCall(
     'music.musicasset.PlaylistDetailWrite',
@@ -2450,6 +2460,10 @@ export async function handleQQPlaylistTracksWrite(input, cookieHeader) {
     cookieHeader,
   );
   if (!write.ok) {
+    noteLibraryStep('qq', 'playlist-tracks:write', {
+      dirId, op, songs: vSongInfo.length,
+      ok: false, code: write.code, subcode: write.subcode, msg: write.msg,
+    });
     return write.loginRequired ? qqAuthRequired('playlist-tracks') : { code: 0, changed: false };
   }
   const data = write.data && typeof write.data === 'object' ? write.data : {};
@@ -2457,6 +2471,10 @@ export async function handleQQPlaylistTracksWrite(input, cookieHeader) {
   // 全零是「删空了」那种成功。前端遇到 changed:false 会报错，不会假装更新成功。
   const changed = (Number(data.dirId) === dirId && Number(data.tid) === tid)
     || (Number(data.dirId) === 0 && (data.tid === 0 || String(data.tid) === '0'));
+  noteLibraryStep('qq', 'playlist-tracks:write', {
+    dirId, op, songs: vSongInfo.length,
+    ok: true, code: write.code, retCode: data.retCode, changed,
+  });
   return { code: 0, changed };
 }
 
