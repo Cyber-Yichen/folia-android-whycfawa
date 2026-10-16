@@ -3,10 +3,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { resetFrameTimingDiagnostics } from '@/utils/frameTimingDiagnostics';
 import { notePlaybackStreamInfo } from '@/utils/mediaDiagnostics';
 import { buildDiagnosticReport, resolveStutterAttribution } from '@/utils/buildDiagnosticReport';
+import { clearCrashDiagnostics, recordCrashDiagnostic } from '@/utils/crashDiagnostics';
 
-afterEach(() => {
+afterEach(async () => {
     vi.restoreAllMocks();
     resetFrameTimingDiagnostics();
+    await clearCrashDiagnostics();
     localStorage.clear();
 });
 
@@ -63,5 +65,25 @@ describe('diagnostic report frame timing section', () => {
         expect(continuityLine('element events:')).toContain('seeking=');
         expect(continuityLine('decode:')).toContain('bytes=');
         expect(continuityLine('audio clock:')).toContain('progress=');
+    });
+
+    // 本地音频代理在播放器断开时抛的 SocketException 是预期收尾，不是崩溃。以前它们会占满
+    // 崩溃列表的 20 条、把真正的退出原因挤掉；现在单独归一行摘要。
+    it('keeps expected audio-server teardown out of the crash list', async () => {
+        recordCrashDiagnostic('local-audio-server', new Error('Broken pipe'), { message: 'Broken pipe' });
+        recordCrashDiagnostic('local-audio-server', new Error('Connection reset'), { message: 'Connection reset' });
+        recordCrashDiagnostic('webview', new Error('renderer gone'), {
+            type: 'webview-renderer-gone',
+            thread: 'webview',
+            message: 'renderer gone',
+        });
+
+        const lines = (await buildDiagnosticReport()).split('\n');
+        const section = lines.slice(lines.indexOf('crash diagnostics:'));
+
+        // 真正的崩溃仍然在列表里，而且不会被两条 pipe 噪声顶掉编号。
+        expect(section.some(line => line.includes('[1]') && line.includes('source=webview'))).toBe(true);
+        expect(section.some(line => line.includes('source=local-audio-server') && line.startsWith('  ['))).toBe(false);
+        expect(section.some(line => line.startsWith('  local audio server teardown: 2'))).toBe(true);
     });
 });

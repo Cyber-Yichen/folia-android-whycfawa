@@ -673,11 +673,17 @@ export const buildDiagnosticReport = async (): Promise<string> => {
     }
 
     const crashEntries = await readCrashDiagnostics().catch(() => []);
+    // 本地音频代理在播放器断开（切歌、拖动进度、Activity 销毁）时抛的 SocketException /
+    // Connection reset 是预期的收尾，不是崩溃。以前它们会占满崩溃列表的 20 条、把真正的
+    // 退出原因挤掉，所以单独归一行摘要，不进崩溃列表。
+    const isAudioServerTeardown = (entry: { source?: string }) => entry.source === 'local-audio-server';
+    const teardownEntries = crashEntries.filter(isAudioServerTeardown);
+    const crashOnlyEntries = crashEntries.filter(entry => !isAudioServerTeardown(entry));
     lines.push('', 'crash diagnostics:');
-    if (crashEntries.length === 0) {
+    if (crashOnlyEntries.length === 0) {
         lines.push('  (none)');
     } else {
-        crashEntries.slice(-20).forEach((entry, index) => {
+        crashOnlyEntries.slice(-20).forEach((entry, index) => {
             lines.push(
                 `  [${index + 1}] at=${new Date(entry.at).toISOString()}`
                 + ` source=${entry.source}`
@@ -690,6 +696,13 @@ export const buildDiagnosticReport = async (): Promise<string> => {
                 lines.push(...stackLines.map(line => `      ${line}`));
             }
         });
+    }
+    if (teardownEntries.length > 0) {
+        const lastTeardown = teardownEntries[teardownEntries.length - 1];
+        lines.push(
+            `  local audio server teardown: ${teardownEntries.length}`
+            + ` (expected when the player disconnects; last at=${new Date(lastTeardown.at).toISOString()} type=${lastTeardown.type})`,
+        );
     }
 
     const playbackDiagnostics = await readNativePlaybackDiagnostics();
