@@ -24,13 +24,13 @@ const jsonResponse = (body: unknown) => new Response(JSON.stringify(body), {
 });
 
 const installFetchStub = (options: { fan?: boolean; acceptWrite?: boolean; failedIds?: boolean } = {}) => {
-    const calls: Array<{ module: string; method: string; param: Record<string, any>; comm: Record<string, any> }> = [];
+    const calls: Array<{ url: string; module: string; method: string; param: Record<string, any>; comm: Record<string, any> }> = [];
     let fan = options.fan ?? false;
-    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
         const payload = JSON.parse(String(init?.body || '{}'));
         const module = String(payload?.req_0?.module || '');
         const method = String(payload?.req_0?.method || '');
-        calls.push({ module, method, param: payload?.req_0?.param || {}, comm: payload.comm || {} });
+        calls.push({ url: String(url), module, method, param: payload?.req_0?.param || {}, comm: payload.comm || {} });
 
         if (module === 'music.musicasset.AlbumFavRead') {
             return jsonResponse({ code: 0, req_0: { code: 0, data: { m_fan: { [ALBUM_MID]: fan } } } });
@@ -86,16 +86,26 @@ describe('QQ album subscribe', () => {
         expect(verify.method).toBe('IsAlbumFan');
     });
 
-    it('uses the android comm', async () => {
+    // 读取仍走 android comm（参考实现那套）；**写入**改成公开可用实现的形状：
+    // 网页 comm {ct:24, cv:0, uin} + g_tk 放 query（QQ 的 CSRF token，算法吃 p_skey/skey）。
+    it('reads with the android comm and writes with the web comm plus g_tk', async () => {
         const calls = installFetchStub();
         const { handleQQAlbumSubscribe } = await import('@/nativeBridge/api/qq.js');
         await handleQQAlbumSubscribe({ id: ALBUM_MID, subscribed: true }, COOKIE);
 
-        expect(calls().length).toBeGreaterThan(0);
-        for (const call of calls()) {
-            expect(call.comm.ct).toBe(11);
-            expect(call.comm.qq).toBe('3379082');
-            expect(call.comm.uin).toBeUndefined();
+        const writes = calls().filter(call => call.module === 'music.musicasset.AlbumFavWrite');
+        expect(writes.length).toBeGreaterThan(0);
+        for (const write of writes) {
+            expect(write.comm).toMatchObject({ ct: 24, cv: 0, uin: '2774749' });
+            expect(write.url).toContain('g_tk=5381');
+        }
+
+        const reads = calls().filter(call => call.module !== 'music.musicasset.AlbumFavWrite');
+        expect(reads.length).toBeGreaterThan(0);
+        for (const read of reads) {
+            expect(read.comm.ct).toBe(11);
+            expect(read.comm.qq).toBe('3379082');
+            expect(read.comm.uin).toBeUndefined();
         }
     });
 
@@ -129,7 +139,9 @@ describe('QQ playlist subscribe', () => {
         expect(write.method).toBe('FavPlaylist');
         expect(write.param.uin).toBe('3379082');
         expect(write.param.v_playlistId).toEqual([12345]);
-        expect(write.comm.ct).toBe(11);
+        // 写入用网页 comm + g_tk（见上面的用例说明）。
+        expect(write.comm.ct).toBe(24);
+        expect(write.url).toContain('g_tk=5381');
     });
 
     it('fails when the upstream reports a failed playlist id', async () => {

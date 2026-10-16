@@ -421,8 +421,11 @@ function mapQQTrack(track, fallback) {
   };
 }
 
-async function qqMusicRequest(payload, cookieHeader, ua) {
-  const resp = await fetch(`${QQ_MUSICU_URL}?format=json`, {
+async function qqMusicRequest(payload, cookieHeader, ua, options = {}) {
+  // g_tk（bkn）是 QQ 的 CSRF token。写入接口要它；读取接口不带也能过，
+  // 所以以前一直没暴露出来。放 query 里，与公开的可用实现一致。
+  const query = options.gTk === undefined ? 'format=json' : `format=json&g_tk=${options.gTk}`;
+  const resp = await fetch(`${QQ_MUSICU_URL}?${query}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
@@ -1127,7 +1130,7 @@ export async function handleQQSongLike(id, mid, like, cookieHeader) {
   // 4) 再试 musicasset 的写入。目录号取账号自己的「我喜欢」目录（现场报告里就是 201），
   // 只发一次 —— 失败时不要再叠加重试，那只会放大请求。
   const accountDirId = await resolveQQLikedDirId(cookieHeader);
-  const write = await qqAndroidWriteCall(
+  const write = await qqMusicassetWriteCall(
     'music.musicasset.PlaylistDetailWrite',
     wantLiked ? 'AddSonglist' : 'DelSonglist',
     { dirId: accountDirId || 201, v_songInfo: [{ songId, songType: 0 }] },
@@ -2212,21 +2215,41 @@ async function ensureQQAndroidSession(device) {
 }
 
 /**
- * 写入类模块的 musicu 调用：先确保 android 会话与设备指纹在手，再带上它们发请求。
+ * musicasset 写入的请求形状，严格照一个**现代可用、且明确支持账号级写入**的公开实现
+ * （baoozak/qqmusic-mcp 的 `_musicu`）：
  *
- * 以前失败时会刷新会话再重试一遍；现场证明会话、指纹都拿到了、写入仍被同一个业务码拒，
- * 重试只是把请求数翻倍（用户连点几下就变成十几次写入），所以去掉。
+ *   POST https://u.y.qq.com/cgi-bin/musicu.fcg?format=json&g_tk=<g_tk>
+ *   { "comm": { "ct": 24, "cv": 0, "uin": <uin> }, "req_0": { module, method, param } }
+ *   Cookie: 完整会话 cookie
+ *
+ * 与参考实现（android comm + QIMEI + uid/sid 会话）不同，这里有两个我们以前**从来没有**发过
+ * 的东西：g_tk 放在 query 里 —— 那是 QQ 的 CSRF token，算法只吃 skey/p_skey，而写接口要它
+ * （读接口不带也能过，所以一直没暴露）；以及网页形态的 comm。
+ *
+ * 参考实现那套在这台机器/这个账号上把凭证、设备、指纹、会话、目录号全部对齐之后仍回 500026，
+ * 而这个实现是同类里明确能做账号级写入的，所以写入按它的形状走。
  */
-async function qqAndroidWriteCall(module, method, param, cookieHeader) {
-  const device = await getQQRadioDevice();
-  await ensureQQQimei(device);
-  await ensureQQAndroidSession(device);
-  const { candidates } = qqRadioLoginTypes(cookieHeader);
-  return qqMusicuCall(
-    module, method, param, cookieHeader,
-    buildQQRadioComm(cookieHeader, device, candidates[0]),
-    { ua: QQ_MUSICU_UA, cookie: buildQQRadioCookie(cookieHeader) },
+async function qqMusicassetWriteCall(module, method, param, cookieHeader) {
+  const uin = qqCookieUin(cookieHeader);
+  const gTk = qqGtk(cookieHeader);
+  noteLibraryStep('qq', 'musicasset:write-comm', {
+    ct: 24,
+    uinPresent: Boolean(uin),
+    gTk,
+    // 有 p_skey/skey 才能算出真 g_tk；没有时用的是 5381（等于 hash33("")）。
+    hasSkey: /(?:^|;\s*)(?:p_skey|skey)=/.test(String(cookieHeader || '')),
+    module,
+    method,
+  });
+  const json = await qqMusicRequest(
+    { comm: { ct: 24, cv: 0, uin }, req_0: { module, method, param } },
+    cookieHeader,
+    // 网页 comm 要配浏览器 UA（我们这个常量与那个可用实现的 UA 实质相同）。
+    // 发安卓 UA 就成了「网页身份 + 安卓外壳」的混合体 —— 前面几轮就是这么踩过来的。
+    UA,
+    { gTk },
   );
+  return qqMusicuRead(json);
 }
 
 /**
@@ -2390,7 +2413,7 @@ export async function handleQQPlaylistTracksWrite(input, cookieHeader) {
   if (!playlist || !Number.isSafeInteger(dirId) || dirId < 1 || dirId >= 200) return { code: 0, changed: false };
   if (playlist.dirType !== undefined && Number(playlist.dirType) !== 0) return { code: 0, changed: false };
 
-  const write = await qqAndroidWriteCall(
+  const write = await qqMusicassetWriteCall(
     'music.musicasset.PlaylistDetailWrite',
     op === 'add' ? 'AddSonglist' : 'DelSonglist',
     { dirId, v_songInfo: vSongInfo },
@@ -2417,7 +2440,7 @@ export async function handleQQPlaylistSubscribe(input, cookieHeader) {
   // uin 用 str_musicid 的裸值：qqCookieUin 是带 `o` 前缀的 o002774749，参考实现从不拿它当 uin。
   const owner = String(qqCookieMusicId(cookieHeader) || '').trim();
   if (!owner) return qqAuthRequired('playlist-subscribe');
-  const result = await qqAndroidWriteCall(
+  const result = await qqMusicassetWriteCall(
     'music.musicasset.PlaylistFavWrite',
     subscribed ? 'FavPlaylist' : 'CancelFavPlaylist',
     { uin: owner, v_playlistId: [tid] },
@@ -2543,7 +2566,7 @@ export async function handleQQAlbumSubscribe(input, cookieHeader) {
   }
   if (before.subscribed === subscribed) return { code: 0, subscribed };
 
-  const write = await qqAndroidWriteCall(
+  const write = await qqMusicassetWriteCall(
     'music.musicasset.AlbumFavWrite',
     subscribed ? 'FavAlbum' : 'CancelFavAlbum',
     { uin: owner, v_albumMid: [albumMid] },

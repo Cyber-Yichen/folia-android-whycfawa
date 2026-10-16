@@ -102,9 +102,8 @@ describe('QQ song like', () => {
             'music.musicasset.SongFavRead.IsSongFanByMid',
             // 先走 legacy CGI（c.y.qq.com，不在这个过滤里），再读一次确认它有没有生效
             'music.musicasset.SongFavRead.IsSongFanByMid',
-            // 没生效才走 musicasset：先问账号真实的「我喜欢」目录号，再取 android 会话
+            // 没生效才走 musicasset：先问账号真实的「我喜欢」目录号
             'music.musicasset.PlaylistBaseRead.GetPlaylistByUin',
-            'music.getSession.session.GetSession',
             'music.musicasset.PlaylistDetailWrite.AddSonglist',
             // 写完再读确认
             'music.musicasset.SongFavRead.IsSongFanByMid',
@@ -131,26 +130,22 @@ describe('QQ song like', () => {
         expect(writes[0].param.dirId).toBe(201);
     });
 
-    // 现场报告里 identity 与 read 都是 code=0，只有 write 回 500026 —— 参考实现是带着
-    // android 会话（GetSession 拿到的 uid/sid）发写入的，我们以前两个都没有。
-    it('opens the android session before the write and sends uid/sid with it', async () => {
+    // 现场报告里 identity 与 read 都是 code=0，只有 write 回 500026；而一个**现代可用**的
+    // 公开实现（baoozak/qqmusic-mcp）写入时带的是 g_tk（放 query 里）+ 网页形态的 comm
+    // {ct:24, cv:0, uin}。这两样我们以前一个都没有 —— 尤其是写入从没带过 g_tk。
+    it('sends the write with g_tk in the query and the web comm', async () => {
         const calls = installFetchStub();
         const like = await loadHandler();
         await like(SONG_ID, SONG_MID, true, COOKIE);
 
-        const sessionIndex = calls().findIndex(call => call.module === 'music.getSession.session');
-        const writeIndex = calls().findIndex(call => call.module === 'music.musicasset.PlaylistDetailWrite');
-        expect(sessionIndex).toBeGreaterThanOrEqual(0);
-        expect(writeIndex).toBeGreaterThan(sessionIndex);
-
-        const write = calls()[writeIndex];
-        expect(write.comm.uid).toBe('DEVICE-UID');
-        expect(write.comm.sid).toBe('DEVICE-SID');
-        // 取会话那一步是匿名 comm：不带凭据、也不带 tmeLoginType。
-        const sessionCall = calls()[sessionIndex];
-        expect(sessionCall.param).toEqual({ uid: '', vkey: 0, caller: 0 });
-        expect(sessionCall.comm.authst).toBeUndefined();
-        expect(sessionCall.comm.tmeLoginType).toBeUndefined();
+        const write = calls().find(call => call.module === 'music.musicasset.PlaylistDetailWrite');
+        expect(write).toBeDefined();
+        expect(write!.url).toContain('format=json');
+        expect(write!.url).toContain('g_tk=5381');   // 会话里没有 skey/p_skey 时就是这个值
+        expect(write!.comm).toMatchObject({ ct: 24, cv: 0, uin: '2774749' });
+        // 网页 comm 不带 android 那套设备/tmeAppID 字段。
+        expect(write!.comm.tmeAppID).toBeUndefined();
+        expect(write!.comm.QIMEI).toBeUndefined();
     });
 
     // g_tk 是 QQ 网页 CGI 的 CSRF token，算法只认 skey/p_skey。以前拿 musickey（qm_keyst）
@@ -169,22 +164,18 @@ describe('QQ song like', () => {
         expect(legacy).toContain('typelist=13');
     });
 
-    it('sends the android comm, the QQMusic UA and the rebuilt credential cookie', async () => {
+    // 写入的 Cookie 头是完整会话（网页 comm 靠它认证，不是靠 comm.authst）。
+    it('sends the QQMusic UA and the full session cookie on writes', async () => {
         const calls = installFetchStub();
         const like = await loadHandler();
         await like(SONG_ID, SONG_MID, true, COOKIE);
 
-        // 取会话那一步是匿名 comm（下面单独断言），这里只看带凭据的调用。
-        const credentialCalls = calls().filter(call => call.module !== 'music.getSession.session');
-        expect(credentialCalls.length).toBeGreaterThan(0);
-        for (const call of credentialCalls) {
-            expect(call.comm.ct).toBe(11);
-            expect(call.comm.tmeAppID).toBe('qqmusic');
-            expect(call.comm.qq).toBe('3379082');
-            expect(call.comm.uin).toBeUndefined();
-            expect(call.ua).toBe('QQMusic 14090008(android 10)');
-            expect(call.cookie).toBe('uin=3379082; qqmusic_uin=3379082; qm_keyst=MUSICKEY; qqmusic_key=MUSICKEY');
-        }
+        const write = calls().find(call => call.module === 'music.musicasset.PlaylistDetailWrite');
+        expect(write).toBeDefined();
+        expect(write!.ua).toContain('Chrome/124');
+        expect(write!.cookie).toContain('qm_keyst=MUSICKEY');
+        expect(write!.cookie).toContain('uin=');
+        expect(write!.comm.authst).toBeUndefined();
     });
 
     it('does not write when the song is already in the wanted state', async () => {
