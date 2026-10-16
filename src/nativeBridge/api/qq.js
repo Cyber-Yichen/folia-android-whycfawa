@@ -1112,11 +1112,9 @@ export async function handleQQSongLike(id, mid, like, cookieHeader) {
 
   // 3) 写入候选端点，逐个试、每个都用再读关系确认（写接口自报成功不算数）。
   //
-  // 现场：PlaylistDetailWrite/AddSonglist 在 g_tk 与网页 comm 都对齐后回业务码 80105 ——
-  // 参考实现的码表把 80105 记为「第三方回报：往「我喜欢」加歌被拒，参数还是权限问题未知」，
-  // 也就是连它也没有解法。所以再试一个**从未被公平测过**的端点：SongFavWrite/AddSong。
-  // 它以前是在没有 g_tk、没有网页 comm 的形状下发出去的（那种形状连 gateway 都过不了），
-  // 现在用同一套正确形状重试。
+  // 第一候选就是**实测可用的形状**：android comm + 设备身份 + QIMEI + uid/sid 会话 +
+  // QQMusic UA + 重建凭据 cookie，**并且带 g_tk**（见 qqMusicassetWriteCall 的注释：
+  // 两个方案各对了一半，合起来才过）。加与删走同一个端点同一套形状，只是方法不同。
   const accountDirId = await resolveQQLikedDirId(cookieHeader);
   const dirId = accountDirId || 201;
   const uin = qqCookieUin(cookieHeader);
@@ -1124,6 +1122,16 @@ export async function handleQQSongLike(id, mid, like, cookieHeader) {
     {
       via: 'PlaylistDetailWrite',
       run: () => qqMusicassetWriteCall(
+        'music.musicasset.PlaylistDetailWrite',
+        wantLiked ? 'AddSonglist' : 'DelSonglist',
+        { dirId, v_songInfo: [{ songId, songType: 0 }] },
+        cookieHeader,
+      ),
+    },
+    {
+      // 网页 comm + g_tk：单独用回 80105，留作第二候选（换一种身份试一次，不再是主路径）。
+      via: 'PlaylistDetailWriteWeb',
+      run: () => qqWebCommWriteCall(
         'music.musicasset.PlaylistDetailWrite',
         wantLiked ? 'AddSonglist' : 'DelSonglist',
         { dirId, v_songInfo: [{ songId, songType: 0 }] },
@@ -1226,40 +1234,22 @@ async function qqLikeShapeSweep(songMid, songId, cookieHeader, readLiked) {
     });
   };
 
-  const viaWebComm = (module, method, param, commUin) => qqMusicRequest(
-    { comm: { ct: 24, cv: 0, uin: commUin }, req_0: { module, method, param } },
-    cookieHeader, UA, { gTk: qqGtk(cookieHeader) },
-  ).then(qqMusicuRead);
+  const viaWebComm = (module, method, param, commUin) => qqWebCommWriteCall(
+    module, method, param, cookieHeader, commUin,
+  );
 
   const tests = [
     // 1) 网页 comm，但 uin 用音乐账号 id（str_musicid），而不是 cookie 里的 QQ 号。
     () => viaWebComm('music.musicasset.PlaylistDetailWrite', 'AddSonglist',
       { dirId, v_songInfo: [{ songId, songType: 0 }] }, musicId || uin),
-    // 2) 参考实现那套 android comm + QIMEI + uid/sid 会话，但**带上 g_tk**（这个组合没试过）。
-    async () => {
-      const device = await getQQRadioDevice();
-      await ensureQQQimei(device);
-      await ensureQQAndroidSession(device);
-      const { candidates } = qqRadioLoginTypes(cookieHeader);
-      return qqMusicuRead(await qqMusicRequest(
-        {
-          comm: buildQQRadioComm(cookieHeader, device, candidates[0]),
-          req_0: {
-            module: 'music.musicasset.PlaylistDetailWrite',
-            method: 'AddSonglist',
-            param: { dirId, v_songInfo: [{ songId, songType: 0 }] },
-          },
-        },
-        buildQQRadioCookie(cookieHeader), QQ_MUSICU_UA, { gTk: qqGtk(cookieHeader) },
-      ));
-    },
-    // 3) SongFavWrite/AddSong（批量式参数）。
-    () => viaWebComm('music.musicasset.SongFavWrite', 'AddSong',
-      { uin: Number(uin) || uin, v_uin: Number(uin) || uin, dirId, ids: [songId], songTypes: [0] }, uin),
-    // 4) dirId 0：参考实现把 `{dirId: 0, tid: 0}` 也当成成功形状，也许 0 才是「默认收藏」。
+    // 2) SongFavWrite/AddSong（批量式参数），走实测可用的形状。
+    () => qqMusicassetWriteCall('music.musicasset.SongFavWrite', 'AddSong',
+      { uin: Number(uin) || uin, v_uin: Number(uin) || uin, dirId, ids: [songId], songTypes: [0] },
+      cookieHeader),
+    // 3) dirId 0：参考实现把 `{dirId: 0, tid: 0}` 也当成成功形状，也许 0 才是「默认收藏」。
     () => viaWebComm('music.musicasset.PlaylistDetailWrite', 'AddSonglist',
       { dirId: 0, v_songInfo: [{ songId, songType: 0 }] }, uin),
-    // 5) songType 13（历史上被猜过的类型码）。
+    // 4) songType 13（历史上被猜过的类型码）。
     () => viaWebComm('music.musicasset.PlaylistDetailWrite', 'AddSonglist',
       { dirId, v_songInfo: [{ songId, songType: 13 }] }, uin),
   ];
@@ -2338,28 +2328,46 @@ async function ensureQQAndroidSession(device) {
 }
 
 /**
- * musicasset 写入的请求形状，严格照一个**现代可用、且明确支持账号级写入**的公开实现
- * （baoozak/qqmusic-mcp 的 `_musicu`）：
+ * musicasset 写入的**可用形状**（现场实测出来的，见下）。
  *
- *   POST https://u.y.qq.com/cgi-bin/musicu.fcg?format=json&g_tk=<g_tk>
- *   { "comm": { "ct": 24, "cv": 0, "uin": <uin> }, "req_0": { module, method, param } }
- *   Cookie: 完整会话 cookie
+ * 两个方案各对了一半，只有合起来才过：
+ *   - 参考实现的 android comm + 设备身份 + QIMEI + `uid/sid` 会话 + QQMusic UA + 重建后的
+ *     凭据 cookie，但**没有 g_tk** → 现场一直回业务码 500026；
+ *   - 一个现代可用实现（baoozak/qqmusic-mcp）的 g_tk（放 query 里，QQ 的 CSRF token，
+ *     算法只吃 skey/p_skey）+ 网页 comm → 现场回 80105。
  *
- * 与参考实现（android comm + QIMEI + uid/sid 会话）不同，这里有两个我们以前**从来没有**发过
- * 的东西：g_tk 放在 query 里 —— 那是 QQ 的 CSRF token，算法只吃 skey/p_skey，而写接口要它
- * （读接口不带也能过，所以一直没暴露）；以及网页形态的 comm。
+ * 2026-10 的现场矩阵自检给出了答案：**android 身份 + g_tk** 的组合 `retCode=0`，并且再读关系
+ * 确认 liked 从 false 变成 true（连读两次都是 true）。所以写入统一走这个形状。
  *
- * 参考实现那套在这台机器/这个账号上把凭证、设备、指纹、会话、目录号全部对齐之后仍回 500026，
- * 而这个实现是同类里明确能做账号级写入的，所以写入按它的形状走。
+ * 每条写入都必须靠再读关系确认 —— 上游自报成功不算数。
  */
 async function qqMusicassetWriteCall(module, method, param, cookieHeader) {
-  const uin = qqCookieUin(cookieHeader);
+  const device = await getQQRadioDevice();
+  await ensureQQQimei(device);
+  await ensureQQAndroidSession(device);
+  const { candidates } = qqRadioLoginTypes(cookieHeader);
+  return qqMusicuRead(await qqMusicRequest(
+    {
+      comm: buildQQRadioComm(cookieHeader, device, candidates[0]),
+      req_0: { module, method, param },
+    },
+    buildQQRadioCookie(cookieHeader),
+    QQ_MUSICU_UA,
+    { gTk: qqGtk(cookieHeader) },
+  ));
+}
+
+/**
+ * 同一套 g_tk，但配**网页形态**的 comm（ct 24 / cv 0 / uin + 浏览器 UA + 完整 cookie）。
+ * 现场它单独用回 80105，不是可用形状；保留为写入的第二候选，不做默认。
+ */
+async function qqWebCommWriteCall(module, method, param, cookieHeader, uinOverride) {
+  const uin = uinOverride || qqCookieUin(cookieHeader);
   const gTk = qqGtk(cookieHeader);
-  noteLibraryStep('qq', 'musicasset:write-comm', {
+  noteLibraryStep('qq', 'web-comm:write-comm', {
     ct: 24,
     uinPresent: Boolean(uin),
     gTk,
-    // 有 p_skey/skey 才能算出真 g_tk；没有时用的是 5381（等于 hash33("")）。
     hasSkey: /(?:^|;\s*)(?:p_skey|skey)=/.test(String(cookieHeader || '')),
     module,
     method,
@@ -2367,8 +2375,6 @@ async function qqMusicassetWriteCall(module, method, param, cookieHeader) {
   const json = await qqMusicRequest(
     { comm: { ct: 24, cv: 0, uin }, req_0: { module, method, param } },
     cookieHeader,
-    // 网页 comm 要配浏览器 UA（我们这个常量与那个可用实现的 UA 实质相同）。
-    // 发安卓 UA 就成了「网页身份 + 安卓外壳」的混合体 —— 前面几轮就是这么踩过来的。
     UA,
     { gTk },
   );

@@ -100,8 +100,10 @@ describe('QQ song like', () => {
             'music.pf_song_detail_svr.get_song_detail_yqq',
             // 读当前关系
             'music.musicasset.SongFavRead.IsSongFanByMid',
-            // 先问账号真实的「我喜欢」目录号，再写（legacy CGI 现在是最后才试）
+            // 先问账号真实的「我喜欢」目录号
             'music.musicasset.PlaylistBaseRead.GetPlaylistByUin',
+            // 写入形状的一部分：android 会话（uid/sid）
+            'music.getSession.session.GetSession',
             'music.musicasset.PlaylistDetailWrite.AddSonglist',
             // 写完再读确认
             'music.musicasset.SongFavRead.IsSongFanByMid',
@@ -128,22 +130,22 @@ describe('QQ song like', () => {
         expect(writes[0].param.dirId).toBe(201);
     });
 
-    // 现场报告里 identity 与 read 都是 code=0，只有 write 回 500026；而一个**现代可用**的
-    // 公开实现（baoozak/qqmusic-mcp）写入时带的是 g_tk（放 query 里）+ 网页形态的 comm
-    // {ct:24, cv:0, uin}。这两样我们以前一个都没有 —— 尤其是写入从没带过 g_tk。
-    it('sends the write with g_tk in the query and the web comm', async () => {
+    // 现场矩阵自检定出来的**可用形状**：android comm + 设备身份 + QIMEI + uid/sid 会话 +
+    // QQMusic UA + 重建凭据 cookie，**并且带 g_tk**（两个方案各对了一半，合起来才过：
+    // 只有 android 身份 → 500026；只有 g_tk + 网页 comm → 80105）。
+    it('sends the primary write with the android comm and g_tk', async () => {
         const calls = installFetchStub();
         const like = await loadHandler();
         await like(SONG_ID, SONG_MID, true, COOKIE);
 
         const write = calls().find(call => call.module === 'music.musicasset.PlaylistDetailWrite');
         expect(write).toBeDefined();
-        expect(write!.url).toContain('format=json');
         expect(write!.url).toContain('g_tk=5381');   // 会话里没有 skey/p_skey 时就是这个值
-        expect(write!.comm).toMatchObject({ ct: 24, cv: 0, uin: '2774749' });
-        // 网页 comm 不带 android 那套设备/tmeAppID 字段。
-        expect(write!.comm.tmeAppID).toBeUndefined();
-        expect(write!.comm.QIMEI).toBeUndefined();
+        expect(write!.comm).toMatchObject({ ct: 11, tmeAppID: 'qqmusic', qq: '3379082' });
+        // android 身份：设备会话与指纹都在，且没有网页 comm 的 uin。
+        expect(write!.comm.uid).toBe('DEVICE-UID');
+        expect(write!.comm.sid).toBe('DEVICE-SID');
+        expect(write!.comm.uin).toBeUndefined();
     });
 
     // g_tk 是 QQ 网页 CGI 的 CSRF token，算法只认 skey/p_skey。以前拿 musickey（qm_keyst）
@@ -163,17 +165,17 @@ describe('QQ song like', () => {
         expect(legacy).toContain('typelist=13');
     });
 
-    // 写入的 Cookie 头是完整会话（网页 comm 靠它认证，不是靠 comm.authst）。
-    it('sends the QQMusic UA and the full session cookie on writes', async () => {
+    // 写入的 Cookie 头是**重建**过的凭据（uin=音乐号; qqmusic_uin; qm_keyst; qqmusic_key），
+    // 这是 android 那套形状的一部分：comm 里没有 authst，认证靠这四个键。
+    it('sends the QQMusic UA and the rebuilt credential cookie on writes', async () => {
         const calls = installFetchStub();
         const like = await loadHandler();
         await like(SONG_ID, SONG_MID, true, COOKIE);
 
         const write = calls().find(call => call.module === 'music.musicasset.PlaylistDetailWrite');
         expect(write).toBeDefined();
-        expect(write!.ua).toContain('Chrome/124');
-        expect(write!.cookie).toContain('qm_keyst=MUSICKEY');
-        expect(write!.cookie).toContain('uin=');
+        expect(write!.ua).toBe('QQMusic 14090008(android 10)');
+        expect(write!.cookie).toBe('uin=3379082; qqmusic_uin=3379082; qm_keyst=MUSICKEY; qqmusic_key=MUSICKEY');
         expect(write!.comm.authst).toBeUndefined();
     });
 
@@ -223,7 +225,7 @@ describe('QQ song like', () => {
         await like(SONG_ID, SONG_MID, true, COOKIE);
 
         const sweeps = getLibraryTraceLines().filter(line => line.includes('sweep:attempt'));
-        expect(sweeps.length).toBe(5);
+        expect(sweeps.length).toBe(4);
         // 每个形状都要带上游回码，否则这一趟等于白跑。
         for (const line of sweeps) expect(line).toMatch(/code=/);
     });

@@ -86,9 +86,9 @@ describe('QQ album subscribe', () => {
         expect(verify.method).toBe('IsAlbumFan');
     });
 
-    // 读取仍走 android comm（参考实现那套）；**写入**改成公开可用实现的形状：
-    // 网页 comm {ct:24, cv:0, uin} + g_tk 放 query（QQ 的 CSRF token，算法吃 p_skey/skey）。
-    it('reads with the android comm and writes with the web comm plus g_tk', async () => {
+    // 读与写都走 android comm（现场矩阵自检定出来的可用身份）；
+    // 区别在 g_tk：写入接口要 CSRF token，读取不带也能过。
+    it('writes with the android comm plus g_tk', async () => {
         const calls = installFetchStub();
         const { handleQQAlbumSubscribe } = await import('@/nativeBridge/api/qq.js');
         await handleQQAlbumSubscribe({ id: ALBUM_MID, subscribed: true }, COOKIE);
@@ -96,7 +96,8 @@ describe('QQ album subscribe', () => {
         const writes = calls().filter(call => call.module === 'music.musicasset.AlbumFavWrite');
         expect(writes.length).toBeGreaterThan(0);
         for (const write of writes) {
-            expect(write.comm).toMatchObject({ ct: 24, cv: 0, uin: '2774749' });
+            expect(write.comm).toMatchObject({ ct: 11, tmeAppID: 'qqmusic', qq: '3379082' });
+            expect(write.comm.uin).toBeUndefined();
             expect(write.url).toContain('g_tk=5381');
         }
 
@@ -104,8 +105,7 @@ describe('QQ album subscribe', () => {
         expect(reads.length).toBeGreaterThan(0);
         for (const read of reads) {
             expect(read.comm.ct).toBe(11);
-            expect(read.comm.qq).toBe('3379082');
-            expect(read.comm.uin).toBeUndefined();
+            expect(read.url).not.toContain('g_tk=');
         }
     });
 
@@ -139,8 +139,8 @@ describe('QQ playlist subscribe', () => {
         expect(write.method).toBe('FavPlaylist');
         expect(write.param.uin).toBe('3379082');
         expect(write.param.v_playlistId).toEqual([12345]);
-        // 写入用网页 comm + g_tk（见上面的用例说明）。
-        expect(write.comm.ct).toBe(24);
+        // 写入走实测可用的形状：android comm + g_tk（见上面的用例说明）。
+        expect(write.comm.ct).toBe(11);
         expect(write.url).toContain('g_tk=5381');
     });
 
