@@ -105,7 +105,10 @@ export const normalizeQqSong = (raw: unknown): UnifiedSong => {
 
     // songmid is the stable playback identity; the numeric song id is only a lyric/detail request parameter.
     const songMid = text(pick(item, 'qqMid', 'mid', 'songmid') ?? sourceRef?.mediaId ?? pick(providerData, 'songMid'));
-    const rawSongId = pick(item, 'songid', 'songId') ?? pick(providerData, 'songId') ?? item.id;
+    // 桥的 mapQQTrack 把数字 id 放在 `qqId` 里、`id` 放的是 mid，所以必须读 qqId —— 少了它，
+    // 凡是从桥来的 QQ 歌曲都拿不到数字 id：「收藏」会在发请求前就抛「没有数字 song id」
+    // （现场报告：detail=returned-no-id），歌词/详情补查也永远补不出来。
+    const rawSongId = pick(item, 'songid', 'songId', 'qqId') ?? pick(providerData, 'songId') ?? item.id;
     const numericSongId = Number(rawSongId);
     const songId: MediaId = Number.isFinite(numericSongId) && numericSongId > 0 ? numericSongId : songMid;
     // `/getAlbumInfo` 的曲目条目没有嵌套的 album 节点，albummid 平铺在顶层，所以两处都要看。

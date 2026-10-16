@@ -166,6 +166,28 @@ describe('QQ song like', () => {
         expect(requestMock).toHaveBeenNthCalledWith(2, 'user_song_like', {}, { song: { id: 303, mid: 'mid-only', type: 0 }, liked: true });
     });
 
+    // 桥的 mapQQTrack 把数字 id 放在 `qqId`、`id` 放 mid。normalizeQqSong 以前不读 qqId，
+    // 于是所有从桥来的 QQ 歌曲都没有数字 id：收藏会在发请求前抛错（现场 detail=returned-no-id）。
+    it('keeps the bridge numeric id so a like needs no detail lookup', async () => {
+        requestMock.mockResolvedValueOnce({ code: 200, liked: true });
+        const fromBridge = normalizeQqSong({
+            id: 'bridge-mid',
+            mid: 'bridge-mid',
+            qqId: 501,
+            name: 'Bridge Song',
+            singer: [],
+            album: {},
+        });
+
+        await qqMutations.likeSong!(fromBridge, true);
+
+        expect(requestMock).toHaveBeenCalledTimes(1);
+        expect(requestMock).toHaveBeenNthCalledWith(1, 'user_song_like', {}, {
+            song: { id: 501, mid: 'bridge-mid', type: 0 },
+            liked: true,
+        });
+    });
+
     it('fails without the backend confirming the state it asked for', async () => {
         requestMock.mockResolvedValueOnce({ code: 200, liked: false }).mockResolvedValueOnce({ code: 200 });
 
