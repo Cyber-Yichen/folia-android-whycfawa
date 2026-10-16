@@ -386,7 +386,7 @@ export async function fetchWithTimeout(input, init = {}, timeout = 10000) {
   }
 }
 
-async function writeSessionCookies(session) {
+export async function writeSessionCookies(session) {
   const raw = (session && session.cookie) || '';
   if (!raw) return;
   // QQ 通道登录：先清掉上一条微信通道留下的通道标记。它们留在同一个 cookie jar 里时，

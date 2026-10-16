@@ -1140,6 +1140,23 @@ export async function handleQQSongLike(id, mid, like, cookieHeader) {
 }
 
 /**
+ * 登录通道用的匿名 musicu 调用（原生扫码的 CreateQRCode 与 Login 交换都走它）。
+ *
+ * 与参考实现一致：不带凭据、只带设备与 QIMEI，调用方用 commOverrides 覆盖 ct/cv 或加
+ * tmeLoginType。原生通道换来的凭据必须由它自己产生 —— 这正是这条通道存在的理由。
+ */
+export async function qqAnonymousMusicuCall(module, method, param, commOverrides) {
+  const device = await getQQRadioDevice();
+  await ensureQQQimei(device);
+  const { tmeLoginType: _loginType, ...anonymousComm } = buildQQRadioComm('', device, undefined);
+  return qqMusicuCall(
+    module, method, param, '',
+    { ...anonymousComm, ...(commOverrides || {}) },
+    { ua: QQ_MUSICU_UA },
+  );
+}
+
+/**
  * 账号真实的「我喜欢」目录号。
  *
  * 歌单写入一直是先 GetPlaylistByUin 查账号真实目录号再写，唯独红心写死 201（旧版收藏目录的

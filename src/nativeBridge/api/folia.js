@@ -48,6 +48,11 @@ import {
 } from './qq-wechat-login.js';
 import { clearQQPlatformSessionCookies } from './qq-login-qr.js';
 import {
+  qqNativeCreateLoginQr,
+  qqNativeCheckLoginQr,
+  qqNativeCancelLoginQr,
+} from './qq-native-login.js';
+import {
   claimKGYouthDayVip,
   ensureKGCookie,
   getKGYouthUnionVip,
@@ -652,9 +657,27 @@ async function routeFoliaQqRequest(operation, params, segments, url, cookie) {
   }
   if (operation === 'login_qr_key') {
     const channel = qqChannelOf(firstValue(params.channel, url.searchParams.get('channel')));
-    const qr = channel === 'wechat'
-      ? await qqWechatGetLoginQr()
-      : await handleQQLoginQrCreate();
+    if (channel === 'wechat') {
+      const qr = await qqWechatGetLoginQr();
+      const key = encodeBridgeKey({ channel, qrsig: qr.qrsig, ptqrtoken: qr.ptqrtoken, qrimg: qr.qrimg || qr.img });
+      return { code: 200, data: { code: 200, unikey: key } };
+    }
+
+    // `qq` 通道是**手机 QQ 原生通道**（provider 注释：仍送 tmeLoginType 6）。
+    // 以前这里走的是网页 ptlogin2 —— 拿到的凭据属于另一条通道，服务端放行读取、
+    // 拒收写入（红心/收藏回业务码 500026）。现在优先走原生通道，
+    // 只有它建不起来（例如该网络连不上 MQTT broker）才回落到网页通道，保证还能登录。
+    try {
+      const qr = await qqNativeCreateLoginQr();
+      const key = encodeBridgeKey({ channel, native: true, qrcodeId: qr.qrcodeId, qrimg: qr.qrimg });
+      return { code: 200, data: { code: 200, unikey: key } };
+    } catch (error) {
+      noteLibraryStep('qq', 'native-login:fallback', {
+        message: String((error && error.message) || error).slice(0, 120),
+      });
+    }
+
+    const qr = await handleQQLoginQrCreate();
     const key = encodeBridgeKey({
       channel,
       qrsig: qr.qrsig,
@@ -675,9 +698,11 @@ async function routeFoliaQqRequest(operation, params, segments, url, cookie) {
   }
   if (operation === 'login_qr_check') {
     const key = decodeBridgeKey(firstValue(params.key, url.searchParams.get('key')));
-    const result = key.channel === 'wechat'
-      ? await qqWechatCheckLoginQr({ qrsig: key.qrsig, ptqrtoken: key.ptqrtoken })
-      : await handleQQLoginQrCheck(key.qrsig, key.ptqrtoken);
+    const result = key.native
+      ? await qqNativeCheckLoginQr(key.qrcodeId)
+      : key.channel === 'wechat'
+        ? await qqWechatCheckLoginQr({ qrsig: key.qrsig, ptqrtoken: key.ptqrtoken })
+        : await handleQQLoginQrCheck(key.qrsig, key.ptqrtoken);
     if (result?.isOk || result?.loggedIn) {
       return { code: 803, message: result.message || 'Login successful', cookie: '' };
     }
@@ -700,7 +725,8 @@ async function routeFoliaQqRequest(operation, params, segments, url, cookie) {
   }
   if (operation === 'login_qr_cancel') {
     const key = decodeBridgeKey(firstValue(params.key, url.searchParams.get('key')));
-    if (key.channel === 'wechat') qqWechatCancelLoginQr(key.qrsig);
+    if (key.native) qqNativeCancelLoginQr(key.qrcodeId);
+    else if (key.channel === 'wechat') qqWechatCancelLoginQr(key.qrsig);
     return { code: 200 };
   }
   if (operation === 'music_play') {
