@@ -213,6 +213,33 @@ describe('QQ song like', () => {
         expect(result.step).toBe('verify-mismatch');
     });
 
+    // 80105 已经把「字段缺失」排除掉了（凭证、设备、g_tk、网页 comm 全部对齐过），
+    // 剩下的可能只有「不同实现形状不同」。所以加收藏失败时一次把余下候选形状全试完，
+    // 用户点一次红心，报告里就带上所有原始回码 —— 不再一轮装一个包试一种。
+    it('sweeps the remaining write shapes when the like is rejected', async () => {
+        installFetchStub({ acceptWrite: false });
+        const { getLibraryTraceLines } = await import('@/nativeBridge/api/libraryTrace.js');
+        const like = await loadHandler();
+        await like(SONG_ID, SONG_MID, true, COOKIE);
+
+        const sweeps = getLibraryTraceLines().filter(line => line.includes('sweep:attempt'));
+        expect(sweeps.length).toBe(5);
+        // 每个形状都要带上游回码，否则这一趟等于白跑。
+        for (const line of sweeps) expect(line).toMatch(/code=/);
+    });
+
+    // 每个会话只跑一次，避免用户连点几下就变成几十次写入。
+    it('runs the sweep at most once per session', async () => {
+        installFetchStub({ acceptWrite: false });
+        const { getLibraryTraceLines, resetLibraryTrace } = await import('@/nativeBridge/api/libraryTrace.js');
+        const like = await loadHandler();
+        await like(SONG_ID, SONG_MID, true, COOKIE);
+        resetLibraryTrace();
+        await like(SONG_ID, SONG_MID, true, COOKIE);
+
+        expect(getLibraryTraceLines().filter(line => line.includes('sweep:attempt')).length).toBe(0);
+    });
+
     it('refuses a mid that does not match the numeric id', async () => {
         const calls = installFetchStub();
         const like = await loadHandler();

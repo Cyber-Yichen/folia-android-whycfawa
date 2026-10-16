@@ -1178,12 +1178,105 @@ export async function handleQQSongLike(id, mid, like, cookieHeader) {
   });
   if (afterLegacy.ok && afterLegacy.liked === wantLiked) return done(wantLiked ? 'add2songdir' : 'delbatchsong');
 
+  // 5) 还是拒：跑一次「形状矩阵」自检（每个会话一次），把余下候选形状一次试完 ——
+  // 用户只需要点一次红心，报告里就带上全部原始回码，不必一轮一轮装包试。
+  if (wantLiked) {
+    const swept = await qqLikeShapeSweep(songMid, songId, cookieHeader, readLiked);
+    if (swept) return done(swept);
+  }
+
   return fail(
     anyAccepted ? -1 : lastCode,
     anyAccepted ? 'verify-mismatch' : 'write-rejected',
     // retCode 是最后一个写入端点的上游回码；verifyMismatch 表示「上游说接受、关系没变」。
     { dirId, retCode: lastCode, verifyMismatch: anyAccepted, legacyCode: legacy && legacy.code },
   );
+}
+
+/**
+ * 红心写入失败时的「形状矩阵」自检。
+ *
+ * 现场证据已经把「字段缺失」排除了：凭证、身份核对、关系读取、android 会话、QIMEI、
+ * 网页 comm、g_tk（真值）全部对齐，写入仍回业务码 80105（参考实现的码表把它登记为
+ * 「第三方回报：往「我喜欢」加歌被拒，参数还是权限问题未知」，且是终态）。
+ *
+ * 剩下的可能只剩下「不同实现用的形状不同」。与其一轮试一种（每轮都要用户装包+反馈），
+ * 不如一次把余下的候选形状全试完，每个都把上游原始回码写进留痕；任一个被再读确认成功就停。
+ * 只在每个会话第一次失败时跑一次，避免请求风暴；只对「加」跑（「删」会动用户数据）。
+ */
+let qqWriteSweepDone = false;
+
+async function qqLikeShapeSweep(songMid, songId, cookieHeader, readLiked) {
+  if (qqWriteSweepDone) return null;
+  qqWriteSweepDone = true;
+  const uin = qqCookieUin(cookieHeader);
+  const musicId = String(qqCookieMusicId(cookieHeader) || '').trim();
+  const dirId = (await resolveQQLikedDirId(cookieHeader)) || 201;
+
+  const record = (shape, res) => {
+    const data = (res && res.data && typeof res.data === 'object') ? res.data : {};
+    noteLibraryStep('qq', 'sweep:attempt', {
+      shape,
+      ok: res && res.ok,
+      code: res && res.code,
+      subcode: res && res.subcode,
+      retCode: data.retCode,
+      msg: typeof (res && res.msg) === 'string' ? res.msg.slice(0, 80) : undefined,
+      dataKeys: Object.keys(data).slice(0, 8).join(','),
+    });
+  };
+
+  const viaWebComm = (module, method, param, commUin) => qqMusicRequest(
+    { comm: { ct: 24, cv: 0, uin: commUin }, req_0: { module, method, param } },
+    cookieHeader, UA, { gTk: qqGtk(cookieHeader) },
+  ).then(qqMusicuRead);
+
+  const tests = [
+    // 1) 网页 comm，但 uin 用音乐账号 id（str_musicid），而不是 cookie 里的 QQ 号。
+    () => viaWebComm('music.musicasset.PlaylistDetailWrite', 'AddSonglist',
+      { dirId, v_songInfo: [{ songId, songType: 0 }] }, musicId || uin),
+    // 2) 参考实现那套 android comm + QIMEI + uid/sid 会话，但**带上 g_tk**（这个组合没试过）。
+    async () => {
+      const device = await getQQRadioDevice();
+      await ensureQQQimei(device);
+      await ensureQQAndroidSession(device);
+      const { candidates } = qqRadioLoginTypes(cookieHeader);
+      return qqMusicuRead(await qqMusicRequest(
+        {
+          comm: buildQQRadioComm(cookieHeader, device, candidates[0]),
+          req_0: {
+            module: 'music.musicasset.PlaylistDetailWrite',
+            method: 'AddSonglist',
+            param: { dirId, v_songInfo: [{ songId, songType: 0 }] },
+          },
+        },
+        buildQQRadioCookie(cookieHeader), QQ_MUSICU_UA, { gTk: qqGtk(cookieHeader) },
+      ));
+    },
+    // 3) SongFavWrite/AddSong（批量式参数）。
+    () => viaWebComm('music.musicasset.SongFavWrite', 'AddSong',
+      { uin: Number(uin) || uin, v_uin: Number(uin) || uin, dirId, ids: [songId], songTypes: [0] }, uin),
+    // 4) dirId 0：参考实现把 `{dirId: 0, tid: 0}` 也当成成功形状，也许 0 才是「默认收藏」。
+    () => viaWebComm('music.musicasset.PlaylistDetailWrite', 'AddSonglist',
+      { dirId: 0, v_songInfo: [{ songId, songType: 0 }] }, uin),
+    // 5) songType 13（历史上被猜过的类型码）。
+    () => viaWebComm('music.musicasset.PlaylistDetailWrite', 'AddSonglist',
+      { dirId, v_songInfo: [{ songId, songType: 13 }] }, uin),
+  ];
+
+  for (let index = 0; index < tests.length; index += 1) {
+    let res = null;
+    try {
+      res = await tests[index]();
+    } catch (error) {
+      res = { ok: false, code: -1, msg: String((error && error.message) || error) };
+    }
+    record(`#${index + 1}`, res);
+    if (res && res.loginRequired) return null;
+    const after = await readLiked();
+    if (after.ok && after.liked === true) return `sweep#${index + 1}`;
+  }
+  return null;
 }
 
 /**
