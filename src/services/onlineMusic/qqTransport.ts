@@ -326,12 +326,15 @@ export const requestQq = async <T = unknown>(
     const endpoint = endpointFor(operation, params);
     if (isFoliaExtensionBridgeConfigured(base)) {
         try {
+            // 写入路由（POST_OPERATIONS）必须把正文一起交给内置桥：它按 input.body 并进 params，
+            // 只发 GET + 空正文会让写入类操作在桥里被判成 bad input，界面看到的是「操作失败」。
             const body = await requestFoliaExtension<any>({
                 provider: 'qq',
                 operation,
-                method: 'GET',
+                method: isPost ? 'POST' : 'GET',
                 path: endpoint.path,
                 params: endpoint.query,
+                ...(payload !== undefined ? { body: payload } : {}),
             });
             if (body?.__foliaBridgeError) {
                 if (body.__foliaBridgeError === 'AUTH_REQUIRED') {
