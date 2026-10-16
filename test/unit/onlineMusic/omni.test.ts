@@ -3,6 +3,8 @@ import { saveProviderAccountSnapshot } from '@/services/onlineMusic/providerAcco
 import { omni } from '@/services/onlineMusic/omni';
 import { registerOnlineMusicProvider, unregisterOnlineMusicProvider } from '@/services/onlineMusic/providerRegistry';
 import { useOnlineProviderAccountStore } from '@/stores/useOnlineProviderAccountStore';
+import { getOnlineMutationDiagnosticLines, resetOnlineMutationDiagnostics } from '@/utils/onlineMutationDiagnostics';
+import { OnlineProviderError } from '@/types/onlineMusic';
 import type { UnifiedSong } from '@/types';
 import type { OnlineMusicProvider, ProviderCapabilities, ProviderCollection } from '@/types/onlineMusic';
 
@@ -448,5 +450,44 @@ describe('omni like mutations', () => {
         expect(nextLiked).toBe(true);
         expect(account.likedSongIds.map(String)).toEqual(['7']);
         expect(account.likedSongFileIds).toEqual({});
+    });
+});
+
+// 现场「收藏失败」在诊断里无迹可寻：provider 缺少 songmid / tid / mid 时是提前拒绝的，
+// 一个请求都不发，桥的请求轨迹里自然什么都没有。这里锁住「写入失败一定留一条留痕」。
+describe('omni online mutation trace', () => {
+    it('records a refused like with its provider, operation, media id and reason', async () => {
+        resetOnlineMutationDiagnostics();
+        registerOnlineMusicProvider({
+            ...provider(providerId, { searchSongs: async () => ({ items: [], hasMore: false, nextOffset: 0 }) }),
+            capabilities: { ...capabilities, mutations: true, likes: true },
+            mutations: {
+                likeSong: async () => {
+                    throw new OnlineProviderError('invalid-response', 'QQ song has no songmid for a like write', providerId);
+                },
+            },
+        });
+
+        await expect(omni.likeSong(song(providerId, 'qq:002SiJyq1mesDt'), true))
+            .rejects.toBeInstanceOf(OnlineProviderError);
+
+        const trace = getOnlineMutationDiagnosticLines().join('\n');
+        expect(trace).toContain(`provider=${providerId}`);
+        expect(trace).toContain('operation=song-like');
+        expect(trace).toContain('mediaId=qq:002SiJyq1mesDt');
+        expect(trace).toContain('no songmid');
+    });
+
+    it('keeps a successful write out of the trace', async () => {
+        resetOnlineMutationDiagnostics();
+        registerOnlineMusicProvider({
+            ...provider(providerId, { searchSongs: async () => ({ items: [], hasMore: false, nextOffset: 0 }) }),
+            capabilities: { ...capabilities, mutations: true, likes: true },
+            mutations: { likeSong: async () => undefined },
+        });
+
+        await omni.likeSong(song(providerId, '7'), true);
+
+        expect(getOnlineMutationDiagnosticLines()).toEqual([]);
     });
 });

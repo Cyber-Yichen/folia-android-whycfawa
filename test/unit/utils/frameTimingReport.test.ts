@@ -4,10 +4,12 @@ import { resetFrameTimingDiagnostics } from '@/utils/frameTimingDiagnostics';
 import { notePlaybackStreamInfo } from '@/utils/mediaDiagnostics';
 import { buildDiagnosticReport, resolveStutterAttribution } from '@/utils/buildDiagnosticReport';
 import { clearCrashDiagnostics, recordCrashDiagnostic } from '@/utils/crashDiagnostics';
+import { noteOnlineMutationFailure, resetOnlineMutationDiagnostics } from '@/utils/onlineMutationDiagnostics';
 
 afterEach(async () => {
     vi.restoreAllMocks();
     resetFrameTimingDiagnostics();
+    resetOnlineMutationDiagnostics();
     await clearCrashDiagnostics();
     localStorage.clear();
 });
@@ -85,5 +87,23 @@ describe('diagnostic report frame timing section', () => {
         expect(section.some(line => line.includes('[1]') && line.includes('source=webview'))).toBe(true);
         expect(section.some(line => line.includes('source=local-audio-server') && line.startsWith('  ['))).toBe(false);
         expect(section.some(line => line.startsWith('  local audio server teardown: 2'))).toBe(true);
+    });
+
+    // 现场「收藏失败」在诊断里查不到原因：provider 缺标识时提前拒绝，一个请求都不发。
+    it('surfaces online mutation failures with provider, operation and reason', async () => {
+        noteOnlineMutationFailure({
+            providerId: 'qq',
+            operation: 'song-like',
+            mediaId: 'qq:002SiJyq1mesDt',
+            error: new Error('QQ song has no songmid for a like write'),
+        });
+
+        const lines = (await buildDiagnosticReport()).split('\n');
+        expect(lines).toContain('online mutation trace:');
+        const section = lines.slice(lines.indexOf('online mutation trace:'));
+        expect(section.some(line => line.includes('provider=qq'))).toBe(true);
+        expect(section.some(line => line.includes('operation=song-like'))).toBe(true);
+        expect(section.some(line => line.includes('mediaId=qq:002SiJyq1mesDt'))).toBe(true);
+        expect(section.some(line => line.includes('no songmid'))).toBe(true);
     });
 });

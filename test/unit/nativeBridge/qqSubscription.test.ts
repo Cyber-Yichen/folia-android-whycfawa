@@ -113,7 +113,7 @@ describe('QQ album subscribe', () => {
         const { handleQQAlbumSubscribe } = await import('@/nativeBridge/api/qq.js');
         const result = await handleQQAlbumSubscribe({ id: ALBUM_MID, subscribed: true }, COOKIE);
 
-        expect(result.__foliaBridgeError).toBe('NETWORK');
+        expect(result).toMatchObject({ __foliaBridgeError: 'NETWORK' });
     });
 });
 
@@ -137,7 +137,7 @@ describe('QQ playlist subscribe', () => {
         const { handleQQPlaylistSubscribe } = await import('@/nativeBridge/api/qq.js');
         const result = await handleQQPlaylistSubscribe({ tid: 12345, subscribed: true }, COOKIE);
 
-        expect(result.__foliaBridgeError).toBe('NETWORK');
+        expect(result).toMatchObject({ __foliaBridgeError: 'NETWORK' });
     });
 });
 

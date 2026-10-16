@@ -39,6 +39,7 @@ import {
 import { saveProviderAccountSnapshot } from './providerAccountCache';
 import { applyOmniAudioHook, applyOmniLyricsHook } from '../hostExtensionHooks';
 import { recordCollectionOrderPage } from '../../utils/collectionOrderDiagnostics';
+import { noteOnlineMutationFailure } from '../../utils/onlineMutationDiagnostics';
 
 // src/services/onlineMusic/omni.ts
 // Online Music Network Interface (Omni) - a unified interface for interacting with multiple online music providers.
@@ -67,6 +68,27 @@ const unsupported = (providerId: OmniProviderId, capability: string): never => {
 };
 
 const emptyPage = <T>(offset: number): OmniPage<T> => ({ items: [], hasMore: false, nextOffset: offset });
+
+/**
+ * 写入的公共出口：失败时留一条诊断再往上抛。
+ *
+ * 这些失败在报告里以前完全看不到 —— provider 在缺少 songmid / tid / mid 时是**提前拒绝**的
+ * （一个请求都不发，桥的请求轨迹里自然什么都没有），用户只看到「收藏失败」，无法判断是缺标识、
+ * 缺登录还是上游拒收。记下 provider / 操作 / 条目 / 原因，报告里单列一段。
+ */
+const runOnlineMutation = async <T>(
+    providerId: string,
+    operation: string,
+    mediaId: string | number,
+    run: () => Promise<T>,
+): Promise<T> => {
+    try {
+        return await run();
+    } catch (error) {
+        noteOnlineMutationFailure({ providerId, operation, mediaId, error });
+        throw error;
+    }
+};
 
 // 点赞状态改完要落盘：只更内存的话，重启后靠快照 hydration 的那一帧会恢复旧心形，
 // 后台刷新再失败就一直是旧的。行号是会话级的，不进快照。
@@ -637,10 +659,10 @@ export const omni = {
         }
         if (collection.type === 'album') {
             if (!mutations?.subscribeAlbum) return unsupported(collection.providerId, 'album-subscription');
-            return mutations.subscribeAlbum(collection.id, subscribed);
+            return runOnlineMutation(collection.providerId, subscribed ? 'album-subscribe' : 'album-unsubscribe', collection.id, () => mutations.subscribeAlbum!(collection.id, subscribed));
         }
         if (!mutations?.subscribePlaylist) return unsupported(collection.providerId, 'playlist-subscription');
-        return mutations.subscribePlaylist(collection, subscribed);
+        return runOnlineMutation(collection.providerId, subscribed ? 'playlist-subscribe' : 'playlist-unsubscribe', collection.id, () => mutations.subscribePlaylist!(collection, subscribed));
     },
 
     async updateCollectionTracks(collection: OmniCollection, operation: 'add' | 'del', tracks: SongResult[]): Promise<void> {
@@ -653,7 +675,12 @@ export const omni = {
         ) {
             return unsupported(collection.providerId, 'playlist-track-mutations');
         }
-        return mutations.updatePlaylistTracks(operation, collection, tracks);
+        return runOnlineMutation(
+            collection.providerId,
+            operation === 'add' ? 'playlist-tracks-add' : 'playlist-tracks-del',
+            collection.id,
+            () => mutations.updatePlaylistTracks!(operation, collection, tracks),
+        );
     },
 
     async addSongToPlaylist(song: SongResult, playlist: OmniCollection): Promise<void> {
@@ -722,6 +749,12 @@ export const omni = {
         } catch (error) {
             // 失败时只丢掉可能已经失效的 fileId，点赞状态保持原样——调用方会把错误往上抛。
             dropProviderLikedFileId(source.providerId, songKey);
+            noteOnlineMutationFailure({
+                providerId: source.providerId,
+                operation: liked ? 'song-like' : 'song-unlike',
+                mediaId: songKey,
+                error,
+            });
             throw error;
         }
 

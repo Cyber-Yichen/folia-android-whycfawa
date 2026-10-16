@@ -9,6 +9,7 @@ import { readLastAiThemeAttempt, readAiThemeAttempts, readFailedAiThemeAttempts 
 import { isAiConfigured, readAiSettings } from '../services/aiSettings';
 import { isNeutralAudioEffects } from './audioEffects';
 import { getCollectionOrderDiagnosticLines } from './collectionOrderDiagnostics';
+import { getOnlineMutationDiagnosticLines } from './onlineMutationDiagnostics';
 import { getLyricsDiagnosticLines } from './lyricsDiagnostics';
 import { getLocalLibraryDiagnosticLines } from './localLibraryDiagnostics';
 import {
@@ -661,6 +662,12 @@ export const buildDiagnosticReport = async (): Promise<string> => {
     const collectionOrderLines = getCollectionOrderDiagnosticLines();
     lines.push('', 'collection order trace:');
     lines.push(...(collectionOrderLines.length ? collectionOrderLines : ['  (none)']));
+
+    // 在线写入失败的留痕：这些失败在请求轨迹里可能一条都没有（provider 提前拒绝），
+    // 所以必须单独报，否则「收藏失败」在诊断里无迹可寻。
+    const mutationLines = getOnlineMutationDiagnosticLines();
+    lines.push('', 'online mutation trace:');
+    lines.push(...(mutationLines.length ? mutationLines : ['  (none)']));
 
     const lyricsLines = getLyricsDiagnosticLines();
     lines.push('', 'lyrics pipeline trace:');
