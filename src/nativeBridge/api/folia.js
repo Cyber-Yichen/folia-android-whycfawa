@@ -1111,10 +1111,12 @@ async function handleFoliaKugouRequest(input, url) {
     return { status: 1, error_code: 0, candidates };
   }
   if (operation === 'lyric') {
+    // 把调用方要的格式透下去：provider 要的是 krc（解密后的逐字歌词），
+    // 以前这里忽略 fmt、固定回 LRC 文本，provider 又按 krc 解析，结果解析不出任何行。
     const content = await downloadKGLyricByCandidate({
       id: firstValue(params.id, params.lyric_id),
       accesskey: params.accesskey,
-    });
+    }, { fmt: firstValue(params.fmt, ''), decode: params.decode });
     return { status: 1, error_code: 0, decodeContent: content, content };
   }
   if (operation === 'song_climax') {

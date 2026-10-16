@@ -1,6 +1,7 @@
 import CryptoJS from '../vendor/crypto-es.mjs';
 import { noteLibraryStep } from './libraryTrace.js';
 import { buildQrDataUrl } from './qrImage.js';
+import { krcDecrypt } from '../../utils/lyrics/providers/krcDecrypt';
 import {
   clearCookieCache,
   getKGCookie as readKGCookie,
@@ -3133,7 +3134,9 @@ function isValidKGLyricText(text) {
   if (!t || t.length < 8) return false;
   // m.kugou.com often replies "No Action Found!" with HTTP 200
   if (/no action found|not found|找不到|暂无歌词|<html|<!doctype/i.test(t)) return false;
-  return /\[\d{1,2}:\d{1,2}(?:\.\d{1,3})?\]/.test(t);
+  // LRC 的行头是 [mm:ss.xxx]，KRC 的行头是 [起始毫秒,时长毫秒]（没有冒号）。
+  // 只认前者会把解密后的 KRC 判成无效，于是又退回 LRC。
+  return /\[\d{1,2}:\d{1,2}(?:\.\d{1,3})?\]/.test(t) || /\[\d+,\d+\]/.test(t);
 }
 
 function normalizeKGLyricDurationMs(duration) {
@@ -3156,8 +3159,13 @@ async function fetchKGBasicLrc(hash) {
         mobile: true,
         referer: 'https://m.kugou.com/',
       });
+      const chars = String(text || '').trim().length;
+      noteLibraryStep('kugou', 'lyric:basic:done', { host: 'm.kugou.com', chars, valid: isValidKGLyricText(text) });
       if (isValidKGLyricText(text)) return String(text).trim();
-    } catch (_) {}
+    } catch (error) {
+      // 这条兜底以前把异常完全吞掉：失败与「确实没有歌词」在诊断里长得一样。
+      noteLibraryStep('kugou', 'lyric:basic:error', { host: 'm.kugou.com', message: String(error && error.message || error) });
+    }
   }
   return '';
 }
@@ -3219,34 +3227,81 @@ async function searchKGLyricCandidates(hash, albumAudioId, durationMs, keyword) 
         headers: { 'User-Agent': KG_UA_MOBILE },
       });
       const list = (search && (search.candidates || (search.data && search.data.candidates))) || [];
+      noteLibraryStep('kugou', 'lyric:search:attempt', {
+        host: u.host,
+        count: Array.isArray(list) ? list.length : 0,
+        status: search && (search.status ?? search.error_code),
+      });
       if (Array.isArray(list) && list.length) return list;
-    } catch (_) {}
+    } catch (error) {
+      // 之前这里 catch (_) {}：请求失败与「上游没有候选」都变成空数组，报告里看不出区别。
+      noteLibraryStep('kugou', 'lyric:search:attempt', {
+        host: (() => { try { return new URL(attempt.url).host; } catch (_) { return attempt.url; } })(),
+        error: String(error && error.message || error),
+      });
+    }
   }
+  noteLibraryStep('kugou', 'lyric:search:empty', { attempts: attempts.length });
   return [];
 }
 
-async function downloadKGLyricByCandidate(candidate) {
+// base64 -> bytes：KRC 要先按字节取出再解密，不能先当字符串处理。
+function base64ToBytes(value) {
+  const bin = atob(String(value || '').replace(/\s+/g, ''));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+/**
+ * 按调用方要的格式取歌词。provider 请求的是 fmt=krc + decode（拿到解密后的 KRC 文本，
+ * parseKRC 才能解析逐字），而这里以前固定下 fmt=lrc —— 于是返回的是 LRC 文本，
+ * 被 provider 当 KRC 解析，`[数字,数字]` 行一条都匹配不到。现在 krc 优先、失败退回 lrc。
+ */
+async function downloadKGLyricByCandidate(candidate, options = {}) {
   if (!candidate || !candidate.id || !candidate.accesskey) return '';
-  const urls = [
-    'https://lyrics.kugou.com/download',
-    'http://lyrics.kugou.com/download',
-  ];
-  for (const base of urls) {
-    try {
-      const dl = new URL(base);
-      dl.searchParams.set('ver', '1');
-      dl.searchParams.set('client', 'pc');
-      dl.searchParams.set('id', String(candidate.id));
-      dl.searchParams.set('accesskey', String(candidate.accesskey));
-      dl.searchParams.set('fmt', 'lrc');
-      dl.searchParams.set('charset', 'utf8');
-      const body = await kgFetchJSON(dl.toString(), {
-        referer: 'https://www.kugou.com/',
-        headers: { 'User-Agent': KG_UA_PC },
-      });
-      const lyric = decodeKGLyricContent(body && (body.content || (body.data && body.data.content)));
-      if (isValidKGLyricText(lyric)) return lyric;
-    } catch (_) {}
+  const formats = String(options.fmt || '').toLowerCase() === 'krc' ? ['krc', 'lrc'] : ['lrc'];
+  for (const fmt of formats) {
+    for (const base of ['https://lyrics.kugou.com/download', 'http://lyrics.kugou.com/download']) {
+      try {
+        const dl = new URL(base);
+        dl.searchParams.set('ver', '1');
+        dl.searchParams.set('client', 'pc');
+        dl.searchParams.set('id', String(candidate.id));
+        dl.searchParams.set('accesskey', String(candidate.accesskey));
+        dl.searchParams.set('fmt', fmt);
+        dl.searchParams.set('charset', 'utf8');
+        const body = await kgFetchJSON(dl.toString(), {
+          referer: 'https://www.kugou.com/',
+          headers: { 'User-Agent': KG_UA_PC },
+        });
+        const raw = body && (body.content || (body.data && body.data.content));
+        let lyric = '';
+        if (fmt === 'krc') {
+          try {
+            lyric = await krcDecrypt(base64ToBytes(raw));
+          } catch (error) {
+            noteLibraryStep('kugou', 'lyric:krc:error', { message: String(error && error.message || error) });
+          }
+        } else {
+          lyric = decodeKGLyricContent(raw);
+        }
+        noteLibraryStep('kugou', 'lyric:download:attempt', {
+          host: dl.host,
+          fmt,
+          chars: String(lyric || '').length,
+          valid: isValidKGLyricText(lyric),
+          status: body && (body.status ?? body.error_code),
+        });
+        if (isValidKGLyricText(lyric)) return lyric;
+      } catch (error) {
+        noteLibraryStep('kugou', 'lyric:download:error', {
+          host: (() => { try { return new URL(base).host; } catch (_) { return base; } })(),
+          fmt,
+          message: String(error && error.message || error),
+        });
+      }
+    }
   }
   return '';
 }
