@@ -4,6 +4,7 @@ import { getNeteaseCookie, hasNeteaseLogin, parseCookieString, saveProviderCooki
 import { handleQQSongComments } from './qq.js';
 import { noteQrLoginStep, resetQrLoginTrace } from './qrLoginTrace.js';
 import { buildQrDataUrl } from './qrImage.js';
+import { noteLibraryStep } from './libraryTrace.js';
 
 const HOME_FEATURED_REVIEW_FALLBACKS = [
   { provider: 'netease', source: 'netease', type: 'song', id: 190137, name: '七月上', artist: 'Jam' },
@@ -805,6 +806,12 @@ export async function handleSongLike(id, like, cookie) {
   const trackId = Number(id);
   if (!Number.isFinite(trackId) || trackId <= 0) return { error: 'INVALID_ID', loggedIn: true, id: String(id || '') };
   const wanted = like !== false;
+  // 未登录时写入会以匿名身份被服务端丢弃（界面却可能显示成功），先把登录事实记下来。
+  noteLibraryStep('netease', 'like:login', {
+    loggedIn: Boolean(info.loggedIn),
+    hasMusicU: Boolean(parseCookieString(cookie).MUSIC_U),
+    userId: info.userId ? 'present' : 'absent',
+  });
 
   /**
    * 现场问题：提示收藏成功，但「我喜欢的音乐」里没有这首歌。
@@ -824,7 +831,17 @@ export async function handleSongLike(id, like, cookie) {
       if (typeof value === 'boolean') return value;
       const ids = Array.isArray(body && body.ids) ? body.ids : (Array.isArray(data.ids) ? data.ids : null);
       if (ids) return ids.map(String).includes(String(trackId));
-    } catch (_) {}
+      // 形状没认出来：把键名记下来，否则上层只能看到「无法复查」而不知道上游到底回了什么。
+      noteLibraryStep('netease', 'like:check-shape', {
+        code: body && body.code,
+        bodyKeys: Object.keys(body || {}).slice(0, 8).join(','),
+        dataKeys: Object.keys(data).slice(0, 8).join(','),
+      });
+    } catch (error) {
+      noteLibraryStep('netease', 'like:check-error', {
+        message: String((error && error.message) || error).slice(0, 90),
+      });
+    }
     return null;
   };
 
@@ -840,6 +857,12 @@ export async function handleSongLike(id, like, cookie) {
     try {
       const body = await weapiApi(attempt.path, attempt.data, cookie);
       const code = Number(body && body.code);
+      noteLibraryStep('netease', 'like:write', {
+        path: attempt.path,
+        like: wanted,
+        code,
+        bodyKeys: Object.keys(body || {}).slice(0, 8).join(','),
+      });
       if (code && code !== 200) {
         lastReason = `${attempt.path} code ${code}`;
         continue;

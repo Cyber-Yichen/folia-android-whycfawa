@@ -962,7 +962,8 @@ async function kgPostAndroidSigned(baseURL, urlPath, cookieHeader, bodyData, ext
   };
   // 云盘系列的响应体是 AES 加密的二进制（responseType: arraybuffer），要按字节取再解密。
   if (opts.responseBytes) return await kgFetchBytes(url, request);
-  return kgFetchJSON(url, request);
+  // trace 透传下去：kgFetchJSON 在响应不是 JSON 时会把状态码与原文头部记进留痕。
+  return kgFetchJSON(url, Object.assign({ trace: opts.trace }, request));
 }
 
 /**
@@ -1594,11 +1595,22 @@ async function kgFetchBytes(url, opts) {
 }
 
 async function kgFetchJSON(url, opts) {
-  const text = await kgFetchText(url, opts);
+  opts = opts || {};
+  const resp = await kgFetchResponse(url, opts);
+  const text = await resp.text();
   const cleaned = String(text || '').replace(/<!--[\s\S]*?-->/g, '').trim();
   try {
     return JSON.parse(cleaned || text);
   } catch (_) {
+    // 响应体不是 JSON（空体、HTML 错误页、或别的东西）时原来直接吞成 null，上层只能看到
+    // 一个编造出来的错误码，无从判断是网关拒绝、路由不对还是被风控。把原文头部记下来。
+    if (opts.trace) {
+      noteLibraryStep('kugou', `${opts.trace}:raw`, {
+        status: resp.status,
+        chars: cleaned.length,
+        head: cleaned.slice(0, 160),
+      });
+    }
     return null;
   }
 }
@@ -4208,7 +4220,7 @@ export async function handleKGPlaylistWrite(params, cookieHeader) {
   noteLibraryStep('kugou', 'playlist:add:done', {
     type, status: body && body.status, errorCode: body && body.error_code,
   });
-  return body || { status: 0, error_code: -1, data: {} };
+  return body || { status: 0, error_code: -1, bridgeEmptyResponse: true, data: {} };
 }
 
 /** `/playlist/del`：取消收藏 / 删除歌单。走加密体，响应也是加密的二进制。 */
@@ -4271,11 +4283,12 @@ export async function handleKGPlaylistTracksAdd(params, cookieHeader) {
     },
     { last_time: clienttime, last_area: 'gztx', userid: auth.userId, token: auth.token },
     KG_CLOUDLIST_ROUTER,
+    { trace: 'playlist:tracks:add' },
   );
   noteLibraryStep('kugou', 'playlist:tracks:add:done', {
     count: resource.length, status: body && body.status, errorCode: body && body.error_code,
   });
-  return body || { status: 0, error_code: -1, data: {} };
+  return body || { status: 0, error_code: -1, bridgeEmptyResponse: true, data: {} };
 }
 
 /** `/playlist/tracks/del`：fileids 逗号分隔。 */
@@ -4299,11 +4312,12 @@ export async function handleKGPlaylistTracksDel(params, cookieHeader) {
     },
     { last_time: Math.floor(Date.now() / 1000), last_area: 'gztx', userid: auth.userId, token: auth.token },
     KG_CLOUDLIST_ROUTER,
+    { trace: 'playlist:tracks:del' },
   );
   noteLibraryStep('kugou', 'playlist:tracks:del:done', {
     count: resource.length, status: body && body.status, errorCode: body && body.error_code,
   });
-  return body || { status: 0, error_code: -1, data: {} };
+  return body || { status: 0, error_code: -1, bridgeEmptyResponse: true, data: {} };
 }
 
 /**
