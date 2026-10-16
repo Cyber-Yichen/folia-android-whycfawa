@@ -64,26 +64,26 @@ describe('NetEase song like', () => {
         vi.resetModules();
     });
 
-    // 关键回归：radio/like 打了却没用时，必须换收藏库那条 /api/song/like 再试，并复查确认。
-    it('falls back to /api/song/like when /api/radio/like did not change the relation', async () => {
-        const { paths } = installFetchStub({ radioApplies: false });
+    // 主路径是收藏库那条 /api/song/like（本机实测参数被接受）；私人FM 的 /api/radio/like 会被
+    // 风控挡（code=-460 网络环境存在风险），所以只在主路径没生效时才退过去。
+    it('writes through /api/song/like and confirms by re-reading', async () => {
+        const { paths } = installFetchStub();
         const like = await loadHandler();
         const result = await like(123456, true, COOKIE);
 
         expect(result).toMatchObject({ liked: true, via: '/api/song/like' });
-        expect(paths.some(path => path.endsWith('/radio/like'))).toBe(true);
-        expect(paths.some(path => path.endsWith('/song/like'))).toBe(true);
-        // 写完必须复查过（不是靠上游自报）。
+        expect(paths.some(path => path.endsWith('/radio/like'))).toBe(false);
+        // 写完必须复查过（不是靠上游自报）。写前也读一次，所以至少两次。
         expect(paths.filter(path => path.endsWith('/song/like/check')).length).toBeGreaterThanOrEqual(2);
     });
 
-    it('accepts /api/radio/like when it really applied', async () => {
-        const { paths } = installFetchStub({ radioApplies: true });
+    it('falls back to /api/radio/like when the library endpoint did not apply', async () => {
+        const { paths } = installFetchStub({ songLikeApplies: false, radioApplies: true });
         const like = await loadHandler();
         const result = await like(123456, true, COOKIE);
 
         expect(result).toMatchObject({ liked: true, via: '/api/radio/like' });
-        expect(paths.some(path => path.endsWith('/song/like'))).toBe(false);
+        expect(paths.some(path => path.endsWith('/radio/like'))).toBe(true);
     });
 
     // 两个端点都没让它进收藏库：必须报错，让 UI 显示失败 —— 不能假报成功。
@@ -102,7 +102,7 @@ describe('NetEase song like', () => {
         const result = await like(123456, true, COOKIE);
 
         expect(result).toMatchObject({ liked: true, via: 'already' });
-        expect(paths.some(path => path.endsWith('/radio/like'))).toBe(false);
+        expect(paths.some(path => path.endsWith('/song/like'))).toBe(false);
     });
 
     it('confirms an unlike by reading the relation back', async () => {
@@ -110,7 +110,7 @@ describe('NetEase song like', () => {
         const like = await loadHandler();
         const result = await like(123456, false, COOKIE);
 
-        expect(paths.some(path => path.endsWith('/radio/like'))).toBe(true);
+        expect(paths.some(path => path.endsWith('/song/like'))).toBe(true);
         expect(result.liked).toBe(false);
         expect(result.error).toBeUndefined();
     });

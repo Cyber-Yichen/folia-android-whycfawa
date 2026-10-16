@@ -779,7 +779,8 @@ export async function handleSongLikeCheck(ids, cookie) {
   let likedSet = new Set();
   if (numericIds.length) {
     try {
-      const body = await weapiApi('/api/song/like/check', { ids: JSON.stringify(numericIds) }, cookie);
+      // 参数名必须是 trackIds（本机实测 ids 会回 code=400「参数错误」）。
+      const body = await weapiApi('/api/song/like/check', { trackIds: JSON.stringify(numericIds) }, cookie);
       const data = body.data || body;
       numericIds.forEach((id) => {
         if (data[id] || data[String(id)] || data[Number(id)]) likedSet.add(String(id));
@@ -825,11 +826,14 @@ export async function handleSongLike(id, like, cookie) {
    */
   const readLikedNow = async () => {
     try {
-      const body = await weapiApi('/api/song/like/check', { ids: JSON.stringify([trackId]) }, cookie);
+      // 参数名必须是 trackIds：本机实测 `ids` 会回 code=400「参数错误」，`trackIds` 才被接受。
+      const body = await weapiApi('/api/song/like/check', { trackIds: JSON.stringify([trackId]) }, cookie);
       const data = (body && (body.data || body)) || {};
       const value = data[trackId] ?? data[String(trackId)];
       if (typeof value === 'boolean') return value;
-      const ids = Array.isArray(body && body.ids) ? body.ids : (Array.isArray(data.ids) ? data.ids : null);
+      const ids = Array.isArray(body && body.ids) ? body.ids
+        : (Array.isArray(data.ids) ? data.ids
+          : (Array.isArray(body && body.songs) ? body.songs.map((song) => song && song.id) : null));
       if (ids) return ids.map(String).includes(String(trackId));
       // 形状没认出来：把键名记下来，否则上层只能看到「无法复查」而不知道上游到底回了什么。
       noteLibraryStep('netease', 'like:check-shape', {
@@ -849,8 +853,10 @@ export async function handleSongLike(id, like, cookie) {
   if (before === wanted) return { loggedIn: true, id: String(id), liked: wanted, code: 200, via: 'already' };
 
   const attempts = [
-    { path: '/api/radio/like', data: { alg: 'itembased', trackId, like: wanted, time: '3' } },
+    // 先走收藏库那条：本机实测它是普通端点（参数形状被接受）；
+    // /api/radio/like 是私人FM 的路子，实测会被风控挡（code=-460 网络环境存在风险）。
     { path: '/api/song/like', data: { trackId, like: wanted } },
+    { path: '/api/radio/like', data: { alg: 'itembased', trackId, like: wanted, time: '3' } },
   ];
   let lastReason = '';
   for (const attempt of attempts) {

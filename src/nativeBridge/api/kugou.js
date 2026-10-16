@@ -151,7 +151,15 @@ const KG_WEB_CLIENTVER = KG_ANDROID_CLIENTVER;
 const KG_SRCAPPID = 2919;
 const KG_QR_KEY_APPID = 1001;
 const KG_ANDROID_SIGN_SALT = 'LnT6xpN3khm36zse0QzvmgTZ3waWdRSA';
-const KG_CLOUDLIST_GATEWAY = 'https://gateway.kugou.com/cloudlist.service';
+/**
+ * 云盘 / 歌单服务的网关基址。
+ *
+ * 必须是**裸域名**：路由靠 `x-router: cloudlist.service.kugou.com` 这个头完成。
+ * 以前这里带了 `/cloudlist.service` 前缀，而调用同时又发 router 头 —— 两个路由机制叠加，
+ * 网关直接回 `404 openresty`（本机实测：带前缀 + router 头 → 404；裸路径 + router 头 → 200）。
+ * 读接口侥幸没暴露，是因为它的候选列表里先试了裸域名。
+ */
+const KG_CLOUDLIST_GATEWAY = 'https://gateway.kugou.com';
 const KG_CLOUDLIST_ROUTER = { 'x-router': 'cloudlist.service.kugou.com' };
 const KG_PRODUCT_VIP_TYPE = { tvip: 6, vip: 6, svip: 33, qvip: 6, dvip: 6, mvip: 3 };
 const KG_TRACKER_SECRET = '185672dd44712f60bb1736df5a377e82';
@@ -3373,9 +3381,10 @@ async function fetchKGUserPlaylistOfficial(cookieHeader, page, pagesize, opts) {
   const attempts = [];
   const merged = [];
   const seen = new Set();
+  // 裸域名 + x-router 才是可用形式（见 KG_CLOUDLIST_GATEWAY 的注释）；两个候选曾经同形，
+  // 现在合成一条，避免失败时白白多发一轮。
   const endpoints = [
-    { base: 'https://gateway.kugou.com', path: '/v7/get_all_list' },
-    { base: KG_CLOUDLIST_GATEWAY, path: '/v7/get_all_list' },
+    { base: KG_CLOUDLIST_GATEWAY, path: '/v7/get_all_list', headers: KG_CLOUDLIST_ROUTER },
   ];
   // type 2=全部；若网关对 type=2 失败再拆 0 自建 / 1 收藏
   for (const listType of [2, 0, 1]) {
@@ -3793,9 +3802,7 @@ async function fetchKGCloudlistTracks(listId, cookieHeader) {
   const pageSize = 300;
   // Official playlist_track_all_new uses /v4/get_list_all_file
   const attempts = [
-    { base: 'https://gateway.kugou.com', path: '/v4/get_list_all_file', headers: KG_CLOUDLIST_ROUTER },
     { base: KG_CLOUDLIST_GATEWAY, path: '/v4/get_list_all_file', headers: KG_CLOUDLIST_ROUTER },
-    { base: 'https://gateway.kugou.com', path: '/v2/get_list_all_file', headers: KG_CLOUDLIST_ROUTER },
     { base: KG_CLOUDLIST_GATEWAY, path: '/v2/get_list_all_file', headers: KG_CLOUDLIST_ROUTER },
   ];
   for (const listType of [0, 1]) {
