@@ -8,6 +8,7 @@ import type {
 import { distrustCachedSongAudio } from '../../../services/playbackRecovery/mediaCacheGuard';
 import { classifyMediaPlaybackFailure } from '../../../services/playbackRecovery/onlinePlaybackFailure';
 import { getOnlineProviderIdForSong, getPlaybackSongKey } from '../../../utils/appPlaybackGuards';
+import { noteOnlinePlaybackOutcome } from '../../../utils/onlinePlaybackDiagnostics';
 
 // src/components/app/playback/handleOnlineMediaFailure.ts
 // <audio> 播放在线源出错时的处理：刷新一次音源，拿不到时把结构化原因交给统一的失败策略。
@@ -66,5 +67,19 @@ export const handleOnlineMediaFailure = async ({
 
     // not-attempted：同一个媒体文件刷新过仍然出错，或不适用刷新，只能按媒体错误码给出原因。
     const failure = result.status === 'failed' ? result.failure : mediaFailure;
+    // 现场：用户只看到「暂时无法播放这首歌」，报告里却没有任何播放记录。这里把媒体阶段的
+    // 媒体错误码 + 分类 kind 记下来（取流阶段已在 omni.getAudioSource 记过）。
+    noteOnlinePlaybackOutcome({
+        stage: 'media',
+        outcome: 'error',
+        providerId: providerId ?? 'unknown',
+        mediaId: failedSongKey,
+        quality: '-',
+        kind: failure?.reason,
+        code: failure?.upstreamCode ?? mediaCode ?? undefined,
+        detail: failure?.message
+            ? String(failure.message).slice(0, 120)
+            : (failedSrc ? 'src=' + failedSrc.slice(0, 60) : ''),
+    });
     skipAfterPlaybackFailure(failure, { failedSongKey, failedGeneration, retry });
 };

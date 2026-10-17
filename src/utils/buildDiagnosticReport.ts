@@ -10,6 +10,7 @@ import { isAiConfigured, readAiSettings } from '../services/aiSettings';
 import { isNeutralAudioEffects } from './audioEffects';
 import { getCollectionOrderDiagnosticLines } from './collectionOrderDiagnostics';
 import { getOnlineMutationDiagnosticLines } from './onlineMutationDiagnostics';
+import { getOnlinePlaybackDiagnosticLines } from './onlinePlaybackDiagnostics';
 import { getLyricsDiagnosticLines } from './lyricsDiagnostics';
 import { getLocalLibraryDiagnosticLines } from './localLibraryDiagnostics';
 import {
@@ -668,6 +669,12 @@ export const buildDiagnosticReport = async (): Promise<string> => {
     const mutationLines = getOnlineMutationDiagnosticLines();
     lines.push('', 'online mutation trace:');
     lines.push(...(mutationLines.length ? mutationLines : ['  (none)']));
+
+    // 在线取流 / 媒体播放失败的留痕：用户只会看到「暂时无法播放这首歌」，
+    // 而这条路径以前在报告里一条记录都没有（分不清是哪家 provider、什么原因）。
+    const playbackLines = getOnlinePlaybackDiagnosticLines();
+    lines.push('', 'online playback trace:');
+    lines.push(...(playbackLines.length ? playbackLines : ['  (none)']));
 
     const lyricsLines = getLyricsDiagnosticLines();
     lines.push('', 'lyrics pipeline trace:');

@@ -40,6 +40,7 @@ import { saveProviderAccountSnapshot } from './providerAccountCache';
 import { applyOmniAudioHook, applyOmniLyricsHook } from '../hostExtensionHooks';
 import { recordCollectionOrderPage } from '../../utils/collectionOrderDiagnostics';
 import { noteOnlineMutationFailure } from '../../utils/onlineMutationDiagnostics';
+import { noteOnlinePlaybackError, noteOnlinePlaybackOutcome } from '../../utils/onlinePlaybackDiagnostics';
 
 // src/services/onlineMusic/omni.ts
 // Online Music Network Interface (Omni) - a unified interface for interacting with multiple online music providers.
@@ -539,6 +540,10 @@ export const omni = {
 
     async getAudioSource(song: SongResult, quality: AudioQualityPreference): Promise<OmniAudioSource | null> {
         const provider = providerForSong(song);
+        // 取流是「暂时无法播放这首歌」所有来源里唯一必经的入口：三档结果都留痕，报告才分得清
+        // 是「provider 没给地址」还是「provider 抛错（权限/地区/会员/网络）」。
+        const startedAt = Date.now();
+        const mediaId = getPlaybackSourceRef(song)?.kind === 'online' ? getPlaybackSourceRef(song)?.mediaId : undefined;
         let source: OmniAudioSource | null;
         try {
             source = await (provider.playback?.getAudioSource(song, quality) ?? null);
@@ -547,7 +552,17 @@ export const omni = {
             // supply a URL; without one, or when it has none, rethrow the very same error instance so
             // the caller classifies the provider's evidence. Nothing is saved on this path.
             const rescued = await applyOmniAudioHook(song, null);
-            if (rescued?.url) return rescued;
+            if (rescued?.url) {
+                noteOnlinePlaybackOutcome({
+                    stage: 'resolve', outcome: 'ok', providerId: provider.id, mediaId, quality,
+                    kind: 'hook-rescued', elapsedMs: Date.now() - startedAt,
+                });
+                return rescued;
+            }
+            noteOnlinePlaybackError({
+                stage: 'resolve', providerId: provider.id, mediaId, quality,
+                elapsedMs: Date.now() - startedAt, error,
+            });
             throw error;
         }
         // Written here rather than at either caller because this is the only moment a provider ever
@@ -556,7 +571,18 @@ export const omni = {
         // otherwise: the URL is never fetched again once the bytes are cached.
         if (source?.replayGain) void saveSongReplayGain(song, source.replayGain);
         // Extension layers (Folium omni hooks) may swap the URL; the ReplayGain above stays the provider's.
-        return applyOmniAudioHook(song, source);
+        const resolved = await applyOmniAudioHook(song, source);
+        noteOnlinePlaybackOutcome({
+            stage: 'resolve',
+            outcome: resolved?.url ? 'ok' : 'no-source',
+            providerId: provider.id,
+            mediaId,
+            quality,
+            kind: resolved?.url ? '' : 'empty-url',
+            detail: resolved?.url ? '' : 'provider returned no playable url',
+            elapsedMs: Date.now() - startedAt,
+        });
+        return resolved;
     },
 
     // Asked once per track, including for local and Navidrome songs, so an unsupported source is a
