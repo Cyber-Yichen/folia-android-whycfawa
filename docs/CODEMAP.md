@@ -22,8 +22,8 @@
 | src (其他) | 64+ |
 | stores | 32+ |
 | 其他 | 32+ |
+| backend/electron | 16+ |
 | types | 16+ |
-| backend/electron | 8+ |
 | i18n | 4+ |
 | workers | 2+ |
 
@@ -39,6 +39,7 @@
 | 64+ | `src/components/visualizer/colorMix.ts` |
 | 64+ | `src/library/core/contracts/suite.ts` |
 | 64+ | `src/stores/usePlaybackStore.ts` |
+| 64+ | `src/stores/useStatusMessageStore.ts` |
 | 64+ | `src/types/ponder.ts` |
 | 64+ | `src/utils/appPlaybackGuards.ts` |
 | 32+ | `dev/probes/definition.ts` |
@@ -52,14 +53,15 @@
 | 32+ | `src/library/core/contracts/homeModel.ts` |
 | 32+ | `src/library/suites/bravais/bravaisLayer.ts` |
 | 32+ | `src/mods/folium/contract.ts` |
+| 32+ | `src/services/baseThemes.ts` |
 | 32+ | `src/services/db.ts` |
 | 32+ | `src/services/onlineMusic/omni.ts` |
 | 32+ | `src/services/onlineMusic/songMetadata.ts` |
 | 32+ | `src/stores/useAppViewStore.ts` |
 | 32+ | `src/stores/useAudioSettingsStore.ts` |
-| 32+ | `src/stores/useStatusMessageStore.ts` |
 | 32+ | `src/stores/useThemeSettingsStore.ts` |
 | 32+ | `src/types/localLibrary.ts` |
+| 32+ | `src/utils/coverUrl.ts` |
 | 32+ | `src/utils/fontStacks.ts` |
 | 32+ | `src/utils/lyrics/graphemeTiming.ts` |
 | 32+ | `src/utils/lyrics/parserCore.ts` |
@@ -84,10 +86,12 @@
 - `dev/probes/collectionMorph.probe.tsx`
 - `dev/probes/coverSizeAudit.probe.tsx`
 - `dev/probes/fmTab.probe.tsx`
+- `dev/probes/foliumSelectField.probe.tsx`
 - `dev/probes/globalLyricOffsetRuler.probe.tsx`
 - `dev/probes/gridEntrancePerf.probe.tsx`
 - `dev/probes/gridPanelToggle.probe.tsx`
 - `dev/probes/homeBehavior.probe.tsx`
+- `dev/probes/icuFoliaCompare.probe.tsx`
 - `dev/probes/lattice.probe.tsx`
 - `dev/probes/latticeExit.probe.tsx`
 - `dev/probes/latticePerformance.probe.tsx`
