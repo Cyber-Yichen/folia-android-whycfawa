@@ -113,7 +113,7 @@ QQ 的同一套形状也用于专辑订阅与歌单写入。
 - `npm run build:capacitor` 已通过
 - `npx cap sync android` 已通过
 - `gradlew assembleDebug` 已通过，产出 `android/app/build/outputs/apk/debug/app-debug.apk`
-- APK 包名 `top.izuna.foliamajor`，当前版本 `0.7.20-android.193`（`versionCode` 231），minSdk 24，targetSdk 36
+- APK 包名 `top.izuna.foliamajor`，当前版本 `0.7.20-android.194`（`versionCode` 232），minSdk 24，targetSdk 36
 
 ## 尚未完成
 
@@ -145,3 +145,7 @@ Releases 里塞桌面版夜间包，所以优先删掉。
 - `pr-unit-tests.yml`：push 和 PR 时跑前端单元测试
 
 以后从上游合并时，如果上游又改了这些被删掉的工作流，冲突解决方式就是继续保持删除状态。
+
+### QQ 登录通道：网页扫码优先、原生安卓兜底
+
+`.176` 曾把 `qq` 通道换成原生安卓扫码（CreateQRCode + Login）来修红心写入被拒。但后续现场证据表明原生通道的 `musickey` 只是设备/登录密钥：同一账号**免费歌 purl=true、VIP 歌每档音质都 qqCode=104003 且 purl 为空**（账号确有会员、也重登过）。VIP 播放权挂在网页会话的授权 cookie（`p_skey`/`skey` 等）上，所以 `.194` 起 `login_qr_key` 改回**网页 ptlogin2 优先**，原生通道仅作回退。写入时的 `g_tk` 会来自 `p_skey`/`skey`，红心/收藏需重新回归验证 —— 合并上游时不要把这顺序改回去。

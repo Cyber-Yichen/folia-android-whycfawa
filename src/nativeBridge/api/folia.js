@@ -664,31 +664,39 @@ async function routeFoliaQqRequest(operation, params, segments, url, cookie) {
       return { code: 200, data: { code: 200, unikey: key } };
     }
 
-    // `qq` 通道是**手机 QQ 原生通道**（provider 注释：仍送 tmeLoginType 6）。
-    // 以前这里走的是网页 ptlogin2 —— 拿到的凭据属于另一条通道，服务端放行读取、
-    // 拒收写入（红心/收藏回业务码 500026）。现在优先走原生通道，
-    // 只有它建不起来（例如该网络连不上 MQTT broker）才回落到网页通道，保证还能登录。
+    // `qq` 通道优先走**网页扫码（ptlogin2）**。
+    //
+    // 历史：`.176` 为修「红心写入被拒」把它换成了原生安卓扫码（CreateQRCode + Login）。但后续
+    // 现场证据表明原生通道的 musickey 只是设备/登录密钥：红心能写、**VIP 歌曲却播不了**
+    // （同一账号免费歌 purl=true，VIP 歌每档音质都 qqCode=104003 且 purl 为空；账号本身有会员、
+    // 也重登过）。VIP 播放权挂在网页会话的授权 cookie（p_skey/skey 等）上，所以换回网页通道。
+    // 原生通道保留为回退，保证网页通道不可用时仍然能登录。
     try {
-      const qr = await qqNativeCreateLoginQr();
-      const key = encodeBridgeKey({ channel, native: true, qrcodeId: qr.qrcodeId, qrimg: qr.qrimg });
+      const qr = await handleQQLoginQrCreate();
+      const key = encodeBridgeKey({
+        channel,
+        qrsig: qr.qrsig,
+        ptqrtoken: qr.ptqrtoken,
+        qrimg: qr.qrimg || qr.img,
+      });
       return { code: 200, data: { code: 200, unikey: key } };
     } catch (error) {
-      noteLibraryStep('qq', 'native-login:fallback', {
+      noteLibraryStep('qq', 'web-login:fallback', {
         message: String((error && error.message) || error).slice(0, 120),
       });
     }
 
-    const qr = await handleQQLoginQrCreate();
-    const key = encodeBridgeKey({
+    // 网页通道建不起来才用原生安卓扫码兜底。
+    const nativeQr = await qqNativeCreateLoginQr();
+    const nativeKey = encodeBridgeKey({
       channel,
-      qrsig: qr.qrsig,
-      ptqrtoken: qr.ptqrtoken,
-      qrimg: qr.qrimg || qr.img,
+      native: true,
+      qrcodeId: nativeQr.qrcodeId,
+      qrimg: nativeQr.qrimg,
     });
-    return { code: 200, data: { code: 200, unikey: key } };
+    return { code: 200, data: { code: 200, unikey: nativeKey } };
   }
-  if (operation === 'login_qr_create') {
-    const key = decodeBridgeKey(firstValue(params.key, url.searchParams.get('key')));
+  if (operation === 'login_qr_create') {    const key = decodeBridgeKey(firstValue(params.key, url.searchParams.get('key')));
     return {
       code: 200,
       data: {
