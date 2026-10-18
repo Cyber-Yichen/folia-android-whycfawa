@@ -21,6 +21,7 @@ import { describeLyricsShape, noteLyricsDiagnostic } from '../utils/lyricsDiagno
 import { classifyMissingAudioUrl, classifyPlaybackError } from './playbackRecovery/onlinePlaybackFailure';
 import { resolvePlaybackFailurePolicy, sleepForPlaybackRetry } from './playbackRecovery/playbackFailurePolicy';
 import { getProviderPlaybackCooldown, noteProviderFailure } from './playbackRecovery/providerPlaybackCooldown';
+import { noteOnlinePlaybackOutcome } from '../utils/onlinePlaybackDiagnostics';
 import { isCachedSongAudioDistrusted } from './playbackRecovery/mediaCacheGuard';
 
 export interface LoadOnlineAudioSourceOptions {
@@ -83,6 +84,17 @@ export async function loadOnlineSongAudioSource(
     for (let attempt = 0; ; attempt += 1) {
         const cooldown = providerId ? getProviderPlaybackCooldown(providerId, 'play') : null;
         if (cooldown) {
+            // 冷却期内**不会发起取流**，所以这条必须单独留痕：报告里否则既没有请求也没有失败。
+            noteOnlinePlaybackOutcome({
+                stage: 'resolve',
+                outcome: 'error',
+                providerId: providerId ?? 'unknown',
+                mediaId: getPlaybackSourceRef(song)?.kind === 'online' ? getPlaybackSourceRef(song)?.mediaId : undefined,
+                quality: audioQuality,
+                kind: 'rate-limited(cooldown)',
+                code: cooldown.remainingMs,
+                detail: 'provider cooldown: request skipped',
+            });
             return {
                 kind: 'failed',
                 failure: { reason: 'rate-limited', stage: 'cooldown', providerId, retryAfterMs: cooldown.remainingMs },
@@ -118,6 +130,19 @@ export async function loadOnlineSongAudioSource(
         }
 
         noteProviderFailure(failure);
+        // 「暂时无法播放这首歌」来自 invalid-response / unknown 两档；这里把它们真正的原因
+        // （stage、reason、上游码、是否拿到了地址）记下来，否则报告里只有一条 ok 记录、对不上。
+        noteOnlinePlaybackOutcome({
+            stage: 'resolve',
+            outcome: 'error',
+            providerId: providerId ?? 'unknown',
+            mediaId: sourceRef.kind === 'online' ? sourceRef.mediaId : undefined,
+            quality: audioQuality,
+            kind: failure.reason,
+            code: failure.upstreamCode ?? failure.httpStatus ?? failure.mediaErrorCode,
+            detail: [failure.stage ? 'stage=' + failure.stage : '', failure.message ?? ''].filter(Boolean).join(' ').slice(0, 140),
+            elapsedMs: 0,
+        });
 
         const delays = resolvePlaybackFailurePolicy(failure, 'play').autoRetryDelaysMs;
         const retry = options.retry;
