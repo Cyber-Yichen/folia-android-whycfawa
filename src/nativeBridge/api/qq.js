@@ -122,10 +122,12 @@ function classifyQQPlaybackRestriction(info, session) {
     return playbackRestriction('qq', 'login_required', 'QQ 音乐当前只拿到了网页登录状态，还缺少播放授权，请重新打开 y.qq.com 完成登录', 'login', { code, rawMessage: rawMsg, missingPlaybackKey: true });
   }
   if (code === 104003) {
-    return playbackRestriction('qq', 'copyright_unavailable', 'QQ 音乐没有给当前版本返回播放地址，通常是版权、会员或官方版本限制', 'switch_source', { code, rawMessage: rawMsg });
+    // 现场实测：非会员账号点 VIP 歌时，逐档音质都回 104003 且 purl 为空；同一账号的免费歌能正常播。
+    // 带上 hint，界面才会给出「完整播放可能需要会员」，而不是泛泛的「暂时无法播放这首歌」。
+    return playbackRestriction('qq', 'copyright_unavailable', 'QQ 音乐没有给当前版本返回播放地址，通常是版权、会员或官方版本限制', 'switch_source', { code, rawMessage: rawMsg, hint: { key: 'playback.maybe-membership' } });
   }
   if (/vip|会员|付费|购买|数字专辑|专辑|pay/.test(lower + rawMsg)) {
-    return playbackRestriction('qq', 'vip_required', 'QQ 音乐歌曲需要会员、购买或数字专辑权限', 'upgrade', { code, rawMessage: rawMsg });
+    return playbackRestriction('qq', 'vip_required', 'QQ 音乐歌曲需要会员、购买或数字专辑权限', 'upgrade', { code, rawMessage: rawMsg, hint: { key: 'playback.maybe-membership' } });
   }
   if (code && code !== 0) {
     return playbackRestriction('qq', 'copyright_unavailable', rawMsg || 'QQ 音乐版权暂不可播或仅官方客户端可播', 'switch_source', { code, rawMessage: rawMsg });
