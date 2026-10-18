@@ -738,14 +738,53 @@ export async function handleQQSongUrl(mid, mediaMid, qualityPreference, cookieHe
   if (filenames.length) param.filename = filenames;
   const comm = { uin, format: 'json', ct: musicKey ? 19 : 24, cv: 0, platform: 'yqq.json' };
   if (musicKey) comm.authst = musicKey;
-  const json = await qqMusicRequest({
+  const vkeyPayload = {
     comm,
     req_0: { module: 'vkey.GetVkeyServer', method: 'CgiGetVkey', param },
-  }, cookieHeader);
-  const data = json && json.req_0 && json.req_0.data;
-  const infos = data && Array.isArray(data.midurlinfo) ? data.midurlinfo : [];
-  const info = infos.find((item) => item && item.purl) || infos[0];
-  const purl = info && info.purl;
+  };
+  const readVkey = (response) => {
+    const rows = response && response.req_0 && response.req_0.data && Array.isArray(response.req_0.data.midurlinfo)
+      ? response.req_0.data.midurlinfo
+      : [];
+    return { data: response && response.req_0 && response.req_0.data, rows, info: rows.find((item) => item && item.purl) || rows[0] };
+  };
+  let json = await qqMusicRequest(vkeyPayload, cookieHeader);
+  let { data, rows: infos, info } = readVkey(json);
+  let purl = info && info.purl;
+  let vkeyShape = 'web';
+  // 与写入同一个教训：QQ 的 musicu 模块在 web 身份下可能拿不到 vkey（purl 为空）。
+  // 现场：8 首 QQ 歌全部 not-playable，而 music_play 本身的 code 是 200 —— 就是 purl 空。
+  // 换成实测可用的 android 身份（设备 + QIMEI + uid/sid 会话）并带上 g_tk 再试一次。
+  if (!purl) {
+    try {
+      const device = await getQQRadioDevice();
+      await ensureQQQimei(device);
+      await ensureQQAndroidSession(device);
+      const { candidates } = qqRadioLoginTypes(cookieHeader);
+      const androidJson = await qqMusicRequest(
+        { comm: buildQQRadioComm(cookieHeader, device, candidates[0]), req_0: vkeyPayload.req_0 },
+        buildQQRadioCookie(cookieHeader),
+        QQ_MUSICU_UA,
+        { gTk: qqGtk(cookieHeader) },
+      );
+      const fallback = readVkey(androidJson);
+      if (fallback.info && fallback.info.purl) {
+        json = androidJson;
+        data = fallback.data;
+        infos = fallback.rows;
+        info = fallback.info;
+        purl = fallback.info.purl;
+        vkeyShape = 'android';
+      }
+    } catch (_) {}
+  }
+  noteLibraryStep('qq', 'song-url:vkey', {
+    shape: vkeyShape,
+    purl: Boolean(purl),
+    rows: infos.length,
+    qqCode: info && (info.result || info.code || info.errtype),
+    filename: info && info.filename,
+  });
   if (purl) {
     const sip = (data.sip && data.sip[0]) || 'https://ws.stream.qqmusic.qq.com/';
     const fileMeta = fileCandidates.find((item) => item.filename === info.filename) || {};
