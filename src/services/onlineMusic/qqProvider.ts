@@ -525,6 +525,9 @@ const QQ_LOGIN_METHODS: QrLoginMethod[] = [
     { id: 'wechat', labelKey: 'home.qqLoginMethodWechat', iconKey: 'wechat' },
 ];
 
+const QQ_UNIFIED_METHOD: QrLoginMethod = { id: 'qqmusic', labelKey: 'home.qqLoginMethodQqMusic', iconKey: 'qq' };
+const supportedLoginMethods = () => [...QQ_LOGIN_METHODS, QQ_UNIFIED_METHOD];
+
 const DEFAULT_QQ_LOGIN_METHOD_ID = QQ_LOGIN_METHODS[0].id;
 
 // 后端声明的通道集合。初值 null 表示「还没问到」，此时沿用上面的硬编码数组，
@@ -565,7 +568,7 @@ const refreshDeclaredChannels = (forceRetry = false): Promise<void> => {
 const getQrLoginMethods = (): QrLoginMethod[] => {
     void refreshDeclaredChannels();
     if (!declaredChannels) return QQ_LOGIN_METHODS;
-    const supported = QQ_LOGIN_METHODS.filter(method => declaredChannels?.includes(method.id));
+    const supported = supportedLoginMethods().filter(method => declaredChannels?.includes(method.id));
     return supported.length > 1 ? supported : [];
 };
 
@@ -578,7 +581,7 @@ const resolveQrLoginMethods = async (): Promise<QrLoginMethod[]> => {
 const resolveQrLoginMethodId = (methodId?: string): string => {
     if (methodId) return methodId;
     const supported = declaredChannels
-        ? QQ_LOGIN_METHODS.filter(method => declaredChannels?.includes(method.id))
+        ? supportedLoginMethods().filter(method => declaredChannels?.includes(method.id))
         : [];
     return supported.length === 1 ? supported[0].id : DEFAULT_QQ_LOGIN_METHOD_ID;
 };

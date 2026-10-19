@@ -37,6 +37,20 @@ describe('settingsNavModel', () => {
         expect(groups.every(group => group.items.length > 0)).toBe(true);
     });
 
+    it('hides keyboard anchors on Android while keeping touch interaction settings', () => {
+        const groups = buildSettingsNavGroups(echo, { isElectron: false, supportsKeyboard: false });
+        const interaction = findSettingsNavItem(groups, 'interaction');
+        expect(interaction?.anchors.map(anchor => anchor.id)).toEqual(['gridActionButton']);
+        expect(findSettingsNavItem(groups, 'lab')).toBeDefined();
+        expect(findSettingsNavItem(groups, 'desktop')).toBeUndefined();
+    });
+
+    it('keeps keyboard anchors available for desktop browsers', () => {
+        const groups = buildSettingsNavGroups(echo, { isElectron: false });
+        expect(findSettingsNavItem(groups, 'interaction')?.anchors.map(anchor => anchor.id))
+            .toEqual(['gridActionButton', 'gridPaletteHotkey', 'customShortcut']);
+    });
+
     it('keeps the section order the flat sidebar list used', () => {
         const ids = flattenSettingsNavItems(buildSettingsNavGroups(echo, { isElectron: true })).map(item => item.id);
         expect(ids).toEqual(ALL_SECTIONS);

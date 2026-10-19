@@ -1,6 +1,6 @@
 // src/nativeBridge/api/qq-native-login.js
 //
-// 「手机 QQ」扫码通道 —— QQ 官方客户端走的那条。
+// QQ Music unified QR, also used by the legacy mobile QQ fallback.
 //
 // 流程（与 qq-music-api 的 qrDrivers/qrService/credentialWire 一致）：
 //   1. musicu `music.login.LoginServer` / `CreateQRCode`（comm 覆盖 ct:23, cv:0）→ qrcodeID + PNG
@@ -15,6 +15,7 @@
 // （红心/收藏这类按设备校验的 musicasset 写接口）会拒 —— 现场就是 identity/read 全 code=0、
 // 只有 write 回业务码 500026，而 provider 自己的注释也写着 `qq` 通道「仍送 tmeLoginType 6」。
 
+import { saveProviderCookie } from './cookies.js';
 import { createQrMqttListener } from './qq-mqtt.js';
 import { qqAnonymousMusicuCall } from './qq.js';
 import { buildLoginSession, writeSessionCookies } from './qq-login-qr.js';
@@ -29,6 +30,7 @@ const nativeQrSessions = new Map();
 const dropSession = (qrcodeId) => {
   const session = nativeQrSessions.get(qrcodeId);
   if (!session) return;
+  session.active = false;
   try { session.listener?.close?.(); } catch (_) {}
   nativeQrSessions.delete(qrcodeId);
 };
@@ -47,19 +49,25 @@ const exchangeNativeCredential = async (session, payload) => {
 
   const result = await qqAnonymousMusicuCall(
     'music.login.LoginServer', 'Login',
-    { musicid: Number(musicid), qrCodeID: session.qrcodeId, token },
+    { musicid, qrCodeID: session.qrcodeId, token },
     { tmeLoginType: QQ_MOBILE_LOGIN_TYPE },
+    { exactLogin: true },
   );
+  if (!session.active) return;
   const data = (result.data && typeof result.data === 'object') ? result.data : {};
   const musickey = String(data.musickey || '').trim();
-  const musicId = String(data.musicid || musicid).replace(/\D/g, '');
+  const musicId = [data.str_musicid, data.musicid, musicid]
+    .map(value => String(value ?? '').trim())
+    .find(value => /^[1-9]\d{0,18}$/.test(value)) || '';
+  const loginType = Number(data.loginType ?? (String((cookies.tmeLoginType || {}).value) === '1' ? 1 : 6));
+  const wechat = session.channel === 'qqmusic' && loginType === 1;
   noteQrLoginStep('native:exchange', {
     ok: result.ok,
     code: result.code,
     subcode: result.subcode,
     hasMusicKey: Boolean(musickey),
   });
-  if (!result.ok || !musickey || !musicId) {
+  if (!result.ok || !musickey || !/^[1-9]\d{0,18}$/.test(musicId)) {
     session.state = 'failed';
     session.error = `换票失败（code ${result.code ?? 'n/a'}）`;
     return;
@@ -73,16 +81,21 @@ const exchangeNativeCredential = async (session, payload) => {
     `qm_keyst=${musickey}`,
     `qqmusic_key=${musickey}`,
     `str_musicid=${musicId}`,
-    'login_type=1',
+    wechat ? 'login_type=2' : 'login_type=1',
+    wechat ? 'wxuin=' + musicId : 'tmeLoginType=6',
+    ...(wechat ? ['tmeLoginType=1'] : []),
   ].join('; ');
   const loginSession = buildLoginSession(cookie);
   await writeSessionCookies(loginSession);
+  if (!session.active) return;
+  await saveProviderCookie('qq', loginSession.cookie);
   session.credential = loginSession;
   session.state = 'confirmed';
   noteQrLoginStep('native:session', { cookieCount: loginSession.cookieList.length });
 };
 
 const handleNativeEvent = (session, event) => {
+  if (!session.active || ['exchanging', 'confirmed', 'failed', 'canceled', 'expired'].includes(session.state)) return;
   const type = String((event && event.type) || '');
   noteQrLoginStep('native:event', { type });
   if (type === 'waiting') return;
@@ -104,7 +117,7 @@ const handleNativeEvent = (session, event) => {
  * 创建原生二维码并开始监听。返回 `{ qrcodeId, qrimg }`；
  * 订阅（SUBACK）完成或失败后才返回 —— 失败时抛出，让调用方回落到网页通道。
  */
-export async function qqNativeCreateLoginQr() {
+export async function qqNativeCreateLoginQr(channel = 'qq') {
   const result = await qqAnonymousMusicuCall(
     'music.login.LoginServer', 'CreateQRCode',
     { tmeAppID: 'qqmusic', ct: 11, cv: 14090008 },
@@ -125,6 +138,8 @@ export async function qqNativeCreateLoginQr() {
 
   const session = {
     qrcodeId,
+    channel,
+    active: true,
     state: 'waiting',
     error: '',
     credential: null,
@@ -138,7 +153,13 @@ export async function qqNativeCreateLoginQr() {
   session.listener = listener;
   nativeQrSessions.set(qrcodeId, session);
   // 订阅成功之前不把二维码交出去（见文件头注释）。
-  await listener.ready;
+  listener.done?.catch(error => {
+    if (session.active && !['confirmed', 'exchanging'].includes(session.state)) {
+      session.state = 'failed';
+      session.error = String(error?.message || error);
+    }
+  });
+  try { await listener.ready; } catch (error) { dropSession(qrcodeId); throw error; }
   noteQrLoginStep('native:ready', { qrcodeIdTail: qrcodeId.slice(-4) });
   return { qrcodeId, qrimg: `data:image/png;base64,${encoded}` };
 }
@@ -175,7 +196,7 @@ export async function qqNativeCheckLoginQr(qrcodeId) {
     dropSession(session.qrcodeId);
     return { refresh: true, message: '二维码已过期' };
   }
-  if (session.state === 'exchanging') return { message: '正在换取凭证…' };
+  if (session.state === 'exchanging') return { status: 'scanned', message: '正在换取凭证…' };
   if (session.state === 'scanned') return { status: 'scanned', message: '已扫码，请在手机上确认' };
   return { message: '等待扫码' };
 }

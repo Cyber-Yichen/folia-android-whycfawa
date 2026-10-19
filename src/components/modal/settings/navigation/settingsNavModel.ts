@@ -105,7 +105,7 @@ export const SETTINGS_NAV_GROUP_SPECS: GroupSpec[] = [
  */
 export const buildSettingsNavGroups = (
     t: Translate,
-    options: { isElectron: boolean; hasLibrarySuiteChoice?: boolean; isBravaisSuiteActive?: boolean },
+    options: { isElectron: boolean; supportsKeyboard?: boolean; hasLibrarySuiteChoice?: boolean; isBravaisSuiteActive?: boolean },
 ): SettingsNavGroup[] => (
     SETTINGS_NAV_GROUP_SPECS
         .map(group => ({
@@ -115,12 +115,13 @@ export const buildSettingsNavGroups = (
                 .filter(section => !section.electronOnly || options.isElectron)
                 .map(section => ({
                     id: section.id,
-                    icon: section.icon,
+                    icon: section.id === 'interaction' && options.supportsKeyboard === false ? Command : section.icon,
                     label: t(section.labelKey),
-                    description: t(section.descriptionKey),
+                    description: t(section.id === 'interaction' && options.supportsKeyboard === false ? 'options.interactionTouchSettingsDesc' : section.descriptionKey),
                     anchors: (Object.entries(SETTINGS_ANCHOR_DEFINITIONS) as [SettingsAnchorId, typeof SETTINGS_ANCHOR_DEFINITIONS[SettingsAnchorId]][])
                         .filter(([, definition]) => (
                             definition.section === section.id
+                            && (!('keyboardOnly' in definition) || !definition.keyboardOnly || options.supportsKeyboard !== false)
                             && (!('electronOnly' in definition) || !definition.electronOnly || options.isElectron)
                             && (!('requiresLibrarySuiteChoice' in definition) || !definition.requiresLibrarySuiteChoice || Boolean(options.hasLibrarySuiteChoice))
                             && (!('requiresBravaisSuite' in definition) || !definition.requiresBravaisSuite || Boolean(options.isBravaisSuiteActive))

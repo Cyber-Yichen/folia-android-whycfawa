@@ -1,3 +1,4 @@
+import { stringifyLoginPayload, parseLoginResponse } from './qq-login-payload.js';
 import CryptoJS from '../vendor/crypto-es.mjs';
 import {
   getQQCookie,
@@ -435,9 +436,9 @@ async function qqMusicRequest(payload, cookieHeader, ua, options = {}) {
       'User-Agent': ua || UA,
       Cookie: cookieHeader || '',
     },
-    body: JSON.stringify(payload),
+    body: options.exactLogin ? stringifyLoginPayload(payload) : JSON.stringify(payload),
   });
-  return resp.json();
+  return options.exactLogin ? parseLoginResponse(await resp.text()) : resp.json();
 }
 
 async function qqGetJSON(url, params, cookieHeader) {
@@ -1316,14 +1317,14 @@ async function qqLikeShapeSweep(songMid, songId, cookieHeader, readLiked) {
  * 与参考实现一致：不带凭据、只带设备与 QIMEI，调用方用 commOverrides 覆盖 ct/cv 或加
  * tmeLoginType。原生通道换来的凭据必须由它自己产生 —— 这正是这条通道存在的理由。
  */
-export async function qqAnonymousMusicuCall(module, method, param, commOverrides) {
+export async function qqAnonymousMusicuCall(module, method, param, commOverrides, options = {}) {
   const device = await getQQRadioDevice();
   await ensureQQQimei(device);
   const { tmeLoginType: _loginType, ...anonymousComm } = buildQQRadioComm('', device, undefined);
   return qqMusicuCall(
     module, method, param, '',
     { ...anonymousComm, ...(commOverrides || {}) },
-    { ua: QQ_MUSICU_UA },
+    { ...options, ua: QQ_MUSICU_UA },
   );
 }
 
@@ -1948,7 +1949,7 @@ async function qqMusicuCall(module, method, param, cookieHeader, extraComm, opti
   const json = await qqMusicRequest({
     comm: buildQQAuthComm(cookieHeader, extraComm),
     req_0: { module, method, param },
-  }, options.cookie || cookieHeader, options.ua);
+  }, options.cookie || cookieHeader, options.ua, options);
   return qqMusicuRead(json);
 }
 

@@ -1,3 +1,4 @@
+import LoginQrStage from '../../../components/login/LoginQrStage';
 import React, { useCallback, useEffect, useRef } from 'react';
 import { AlertTriangle, Check, Loader2, RotateCcw, ServerCog, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -30,9 +31,9 @@ const LOGIN_METHOD_ICONS: Record<string, string> = {
 /** 二维码位翻牌的那一格：在表单的竖排里居中（二维码位自己的 align-self 在这一格里不再起作用）。 */
 const QR_FACE_STYLE: React.CSSProperties = { alignSelf: 'center', flex: 'none' };
 
-const LoginQr: React.FC<{ qr: BravaisLoginForm['qr'] }> = ({ qr }) => (
+const LoginQr: React.FC<{ qr: BravaisLoginForm['qr']; phase: string }> = ({ qr, phase }) => (
     <div className={`bravais-login-qr is-${qr.kind}`} data-bravais-login-qr={qr.kind}>
-        {qr.kind === 'image' && <img src={qr.url} alt="QR Code" width={200} height={200} />}
+        {qr.kind === 'image' && <LoginQrStage src={qr.url} phase={phase} />}
         {qr.kind === 'loading' && <Loader2 aria-hidden className="animate-spin" />}
         {qr.kind === 'choose-method' && <span>{qr.text}</span>}
         {qr.kind === 'backend-failure' && (
@@ -99,7 +100,7 @@ const LoginView: React.FC<{ form: BravaisLoginForm; actions: BravaisAccountActio
                 </div>
             )}
             <BravaisSeamFlip flipKey={form.qr.kind} style={QR_FACE_STYLE}>
-                <LoginQr qr={form.qr} />
+                <LoginQr qr={form.qr} phase={form.phase} />
             </BravaisSeamFlip>
             {methods?.current && <p className="bravais-login-current">{methods.current}</p>}
             {form.status && (

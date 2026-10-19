@@ -248,18 +248,20 @@ const LabSettingsModal: React.FC<LabSettingsModalProps> = ({
                                     {renderToggle(autoPlayOnLaunch, () => onToggleAutoPlayOnLaunch(!autoPlayOnLaunch))}
                                 </div>
 
-                                <div className={`p-4 rounded-xl border flex items-center justify-between gap-4 ${settingsCardClass}`}>
-                                    <div className="space-y-1">
-                                        <div className="text-sm font-medium flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-                                            <Monitor size={14} />
-                                            {t('options.alwaysShowMainWindowTitlebar')}
+                                {isElectron && (
+                                    <div className={`p-4 rounded-xl border flex items-center justify-between gap-4 ${settingsCardClass}`}>
+                                        <div className="space-y-1">
+                                            <div className="text-sm font-medium flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                                                <Monitor size={14} />
+                                                {t('options.alwaysShowMainWindowTitlebar')}
+                                            </div>
+                                            <div className="text-xs opacity-50 max-w-[320px]" style={{ color: 'var(--text-secondary)' }}>
+                                                {t('options.alwaysShowMainWindowTitlebarDesc')}
+                                            </div>
                                         </div>
-                                        <div className="text-xs opacity-50 max-w-[320px]" style={{ color: 'var(--text-secondary)' }}>
-                                            {t('options.alwaysShowMainWindowTitlebarDesc')}
-                                        </div>
+                                        {renderToggle(alwaysShowMainWindowTitlebar, () => onToggleAlwaysShowMainWindowTitlebar(!alwaysShowMainWindowTitlebar))}
                                     </div>
-                                    {renderToggle(alwaysShowMainWindowTitlebar, () => onToggleAlwaysShowMainWindowTitlebar(!alwaysShowMainWindowTitlebar))}
-                                </div>
+                                )}
 
                                 {isMacElectron && (
                                     <div className={`p-4 rounded-xl border flex items-center justify-between gap-4 ${settingsCardClass}`}>
