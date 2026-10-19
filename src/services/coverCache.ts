@@ -1,3 +1,5 @@
+import { isAndroidNativeRuntime } from '../utils/platform';
+import { putAndroidCover } from './repositories/androidCacheBudget';
 import { getFromCache, removeFromCache, saveToCache } from './db';
 import { createSafeObjectUrl, isBlob } from '../utils/blobGuards';
 import {
@@ -44,6 +46,7 @@ const fetchCoverBlob = async (coverUrl: string): Promise<Blob> => {
 export async function getCachedCoverUrl(cacheKey: string): Promise<string | null> {
     const stored = await getFromCache<unknown>(cacheKey);
     if (isBlob(stored)) {
+        if (isAndroidNativeRuntime()) return createSafeObjectUrl(stored);
         const descriptor = await writeCoverAsset(cacheKey, stored).catch(() => null);
         if (!descriptor) {
             return createSafeObjectUrl(stored);
@@ -89,8 +92,7 @@ export async function loadCachedOrFetchCover(cacheKey: string, coverUrl?: string
         }
 
         const coverBlob = await fetchCoverBlob(coverUrl);
-        const descriptor = await writeCoverAsset(cacheKey, coverBlob).catch(() => null);
-        if (descriptor) await saveToCache(cacheKey, descriptor);
+        await saveCoverBlob(cacheKey, coverBlob);
         return createSafeObjectUrl(coverBlob) || coverUrl;
     } catch (error) {
         console.warn('Failed to cache cover:', error);
@@ -99,6 +101,10 @@ export async function loadCachedOrFetchCover(cacheKey: string, coverUrl?: string
 }
 
 export async function saveCoverBlob(cacheKey: string, coverBlob: Blob): Promise<void> {
+    if (isAndroidNativeRuntime()) {
+        await putAndroidCover(cacheKey, coverBlob);
+        return;
+    }
     const descriptor = await writeCoverAsset(cacheKey, coverBlob).catch(() => null);
     if (descriptor) {
         await saveToCache(cacheKey, descriptor);
@@ -112,6 +118,10 @@ export async function cacheLocalSongOnlineCover(songId: string, coverUrl: string
     const cacheKey = `cover_local_${songId}`;
     await removeCachedCover(cacheKey);
     try {
+        if (isAndroidNativeRuntime()) {
+            await saveCoverBlob(cacheKey, await fetchCoverBlob(coverUrl));
+            return hasCachedCover(cacheKey);
+        }
         const descriptor = await writeCoverAsset(cacheKey, await fetchCoverBlob(coverUrl));
         if (!descriptor) return false;
         await saveToCache(cacheKey, descriptor);

@@ -595,6 +595,10 @@ export default {
       }
     },
     "commands": {
+      "android-performance-toggle": {"title": "Mode performa Android", "description": "Beralih antara render ringan dan kualitas penuh"},
+      "command-button-hide-toggle": {"title": "Sembunyikan tombol perintah", "description": "Tampilkan atau sembunyikan tombol perintah"},
+      "settings-ai-provider": {"title": "API tema AI", "description": "Atur penyedia tema AI"},
+
       "settings-ponder-hints": { "title": "Petunjuk tutorial Ponder", "description": "Atur kapan petunjuk tahan G muncul" },
       "ponder-hints-always": { "title": "Petunjuk Ponder: selalu tampilkan", "description": "Tampilkan petunjuk tahan G pada setiap kontrol yang bisa dipelajari" },
       "ponder-hints-unseen": { "title": "Petunjuk Ponder: hanya yang belum dilihat", "description": "Berhenti memberi petunjuk setelah tutorialnya ditonton" },
@@ -1600,6 +1604,12 @@ export default {
     "lyricMatchPriorityDesc": "Saat beberapa sumber lirik memiliki kecocokan berkualitas tinggi, utamakan sumber ini terlebih dahulu."
   },
   "options": {
+    "androidPerformanceMode": "Mode performa Android",
+    "androidPerformanceModeDesc": "Kurangi kualitas animasi dan keburaman latar agar lebih lancar.",
+    "hideCommandPaletteButton": "Sembunyikan tombol perintah",
+    "totalCacheLimit": "Batas ukuran cache",
+    "totalCacheLimitDesc": "Audio, sampul, dan lirik berbagi batas ini. Cache lama yang jarang digunakan dihapus otomatis.",
+
     "ponderHints": "Petunjuk tutorial Ponder",
     "ponderHintsDesc": "Mengarahkan kursor ke kontrol yang bisa dipelajari akan memunculkan petunjuk untuk menahan G, yang membuka panduan animasi gerakan tersebut.",
     "ponderHintsAlways": "Selalu tampilkan",

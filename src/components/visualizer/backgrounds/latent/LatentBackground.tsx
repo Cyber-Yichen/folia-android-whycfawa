@@ -1,3 +1,4 @@
+import { isAndroidPerformanceEnabled, useAndroidPerformanceStore } from '../../../../stores/useAndroidPerformanceStore';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { PaperShaderElement } from '@paper-design/shaders';
 import { Dithering, MeshGradient } from '@paper-design/shaders-react';
@@ -117,6 +118,7 @@ const LatentBackground: React.FC<LatentBackgroundProps> = ({
     paused,
     tuning: tuningOverride,
 }) => {
+    const performanceMode = useAndroidPerformanceStore(() => isAndroidPerformanceEnabled());
     const ditheringRef = useRef<PaperShaderElement | null>(null);
     const meshRef = useRef<PaperShaderElement | null>(null);
     // Stable callback refs: they also lose each shader's WebGL context when it unmounts.
@@ -310,7 +312,7 @@ const LatentBackground: React.FC<LatentBackgroundProps> = ({
                             ? 0
                             : resolveLatentShaderSpeed(tuning.meshSpeed, tuning.meshAudioSpeed, 0, paused)}
                         minPixelRatio={1}
-                        maxPixelCount={MAX_SHADER_PIXELS}
+                        maxPixelCount={performanceMode ? 640 * 360 : MAX_SHADER_PIXELS}
                         webGlContextAttributes={PAPER_SHADER_CONTEXT_ATTRIBUTES}
                         style={{ width: '100%', height: '100%' }}
                     />
@@ -340,7 +342,7 @@ const LatentBackground: React.FC<LatentBackgroundProps> = ({
                             ? 0
                             : resolveLatentShaderSpeed(tuning.ditheringSpeed, tuning.ditheringAudioSpeed, 0, paused)}
                         minPixelRatio={1}
-                        maxPixelCount={MAX_SHADER_PIXELS}
+                        maxPixelCount={performanceMode ? 640 * 360 : MAX_SHADER_PIXELS}
                         webGlContextAttributes={PAPER_SHADER_CONTEXT_ATTRIBUTES}
                         style={{ width: '100%', height: '100%' }}
                     />

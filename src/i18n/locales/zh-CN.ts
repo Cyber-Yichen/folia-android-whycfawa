@@ -597,6 +597,10 @@ export default {
       }
     },
     "commands": {
+      "android-performance-toggle": {"title": "安卓性能模式", "description": "切换轻量渲染和完整画质"},
+      "command-button-hide-toggle": {"title": "隐藏命令按钮", "description": "显示或隐藏左下角命令按钮"},
+      "settings-ai-provider": {"title": "AI 主题 API", "description": "配置 AI 主题服务"},
+
       "settings-ponder-hints": { "title": "思索教程提示", "description": "设置长按 G 的提示什么时候出现" },
       "ponder-hints-always": { "title": "思索提示：始终显示", "description": "所有可教学的控件都提示长按 G" },
       "ponder-hints-unseen": { "title": "思索提示：仅未看过的区域", "description": "某个控件的教程看过之后就不再提示它" },
@@ -1606,6 +1610,12 @@ export default {
     "lyricMatchPriorityDesc": "在多个歌词源都存在高置信度匹配时，优先选择该歌词源的结果。"
   },
   "options": {
+    "androidPerformanceMode": "安卓性能模式",
+    "androidPerformanceModeDesc": "降低动画画质和背景模糊，提升流畅度。",
+    "hideCommandPaletteButton": "隐藏命令按钮",
+    "totalCacheLimit": "缓存大小上限",
+    "totalCacheLimitDesc": "音频、封面、歌词等缓存共用上限，超出后清理较久未使用的内容。",
+
     "ponderHints": "思索教程提示",
     "ponderHintsDesc": "把指针停在可教学的控件上会提示长按 G，松手后打开一段演示该手势的动画教程。",
     "ponderHintsAlways": "始终显示",

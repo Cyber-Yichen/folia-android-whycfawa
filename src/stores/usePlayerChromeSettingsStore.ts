@@ -83,6 +83,8 @@ const readStoredPlayerControlSlot = (
     return isPlayerControlSlotActionId(saved) ? saved : fallback;
 };
 
+export const HIDE_COMMAND_PALETTE_BUTTON_KEY = 'hide_command_palette_button';
+
 export type PlayerChromeSettingsState = {
     hidePlayerProgressBar: boolean;
     playerBottomBarOffset: number;
@@ -99,6 +101,7 @@ export type PlayerChromeSettingsState = {
     autoHidePlayerChrome: boolean;
     /** 底部命令面板按钮在没有操作一段时间后自动淡出。 */
     autoHideCommandPaletteButton: boolean;
+    hideCommandPaletteButton: boolean;
     autoHideCursorWithPlayerChrome: boolean;
     showOpenPanelCloseButton: boolean;
     setTransparentPlayerBackgroundFromSystem: (enabled: boolean) => void;
@@ -116,6 +119,7 @@ export type PlayerChromeSettingsState = {
     handleWallpaperTransparentRefused: () => void;
     handleToggleAutoHidePlayerChrome: (enable: boolean) => void;
     handleToggleAutoHideCommandPaletteButton: (enable: boolean) => void;
+    handleToggleHideCommandPaletteButton: (enable: boolean) => void;
     handleToggleAutoHideCursorWithPlayerChrome: (enable: boolean) => void;
     handleToggleOpenPanelCloseButton: (enable: boolean) => void;
 };
@@ -140,6 +144,7 @@ export const usePlayerChromeSettingsStore = create<PlayerChromeSettingsState>((s
     transparentPlayerBackground: getStoredBoolean('transparent_player_background', false),
     enablePlayerPageNativeBlur: getStoredBoolean('enable_player_page_native_blur', false),
     autoHidePlayerChrome: getStoredBoolean('auto_hide_player_chrome', false),
+    hideCommandPaletteButton: getStoredBoolean(HIDE_COMMAND_PALETTE_BUTTON_KEY, false),
     autoHideCommandPaletteButton: getStoredBoolean('auto_hide_command_palette_button', false),
     // Rides the chrome auto-hide clock rather than owning one: the cursor goes away with the
     // controls it would have clicked. Opt-out, so auto-hide can keep the pointer if wanted.
@@ -159,6 +164,10 @@ export const usePlayerChromeSettingsStore = create<PlayerChromeSettingsState>((s
     handleToggleAutoHidePlayerChrome: (enabled: boolean) => {
         localStorage.setItem('auto_hide_player_chrome', enabled ? 'true' : 'false');
         set({ autoHidePlayerChrome: enabled });
+    },
+    handleToggleHideCommandPaletteButton: (enabled: boolean) => {
+        setStoredBoolean(HIDE_COMMAND_PALETTE_BUTTON_KEY, enabled);
+        set({ hideCommandPaletteButton: enabled });
     },
     handleToggleAutoHideCommandPaletteButton: (enabled: boolean) => {
         setStoredBoolean('auto_hide_command_palette_button', enabled);

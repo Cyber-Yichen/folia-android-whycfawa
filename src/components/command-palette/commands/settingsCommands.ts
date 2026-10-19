@@ -19,6 +19,15 @@ import { openCurrentPagePonder } from '../../../services/ponder/pagePonderTarget
 // Commands in the `settings` group: settings subviews, app toggles, theme, sync, and desktop-only switches.
 
 export const settingsCommands: CommandPaletteCommand[] = [
+    createToggleCommand('android-performance-toggle', 'settings', 'Android performance mode', 'Switch between lighter rendering and full quality',
+        ['render quality', 'gpu load', '安卓性能', '低功耗', '流畅度'], context => context.settings.toggleAndroidPerformance(),
+        { platform: ['web'], isAvailable: isAndroidNativeRuntime }),
+    createToggleCommand('command-button-hide-toggle', 'settings', 'Hide command button', 'Show or hide the bottom command button',
+        ['palette button', 'hide launcher', '隐藏命令按钮', '左下角按钮'], context => context.settings.toggleHideCommandPaletteButton(),
+        { platform: ['web'] }),
+    createSettingsAnchorCommand('settings-ai-provider', 'AI theme API', 'Configure the AI theme provider',
+        ['api key', 'model provider', '模型配置', '主题接口'], 'aiProvider', { platform: ['web'] }),
+
     createSettingsCommand('settings-help', 'Open Help', 'Open help and shortcuts', ['help', '帮助'], 'help', null, { executeShortcut: 'h' }),
     {
         id: 'ponder-current-page',

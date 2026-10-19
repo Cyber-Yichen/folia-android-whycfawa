@@ -122,6 +122,7 @@ export const buildSettingsNavGroups = (
                         .filter(([, definition]) => (
                             definition.section === section.id
                             && (!('keyboardOnly' in definition) || !definition.keyboardOnly || options.supportsKeyboard !== false)
+                            && (!('webOnly' in definition) || !definition.webOnly || !options.isElectron)
                             && (!('electronOnly' in definition) || !definition.electronOnly || options.isElectron)
                             && (!('requiresLibrarySuiteChoice' in definition) || !definition.requiresLibrarySuiteChoice || Boolean(options.hasLibrarySuiteChoice))
                             && (!('requiresBravaisSuite' in definition) || !definition.requiresBravaisSuite || Boolean(options.isBravaisSuiteActive))

@@ -1,3 +1,4 @@
+import { androidRenderResolution } from '../../stores/useAndroidPerformanceStore';
 // src/components/visualizer/pixiTextureBudget.ts
 // Snaps a renderer resolution down to Pixi's power-of-two texture pool, so a full-viewport
 // filter pass stops paying for pixels nothing ever draws into.
@@ -92,6 +93,7 @@ export const snapResolutionToTexturePool = (
     if (![cssWidth, cssHeight, resolution].every(value => Number.isFinite(value) && value > 0)) {
         return resolution;
     }
+    resolution = androidRenderResolution(resolution, cssWidth, cssHeight);
     const lowest = resolution * (1 - Math.min(Math.max(maxDrop, 0), 1));
     const candidates = [
         stepDownCandidate(cssWidth, resolution),

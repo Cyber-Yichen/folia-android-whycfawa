@@ -1,3 +1,4 @@
+import SettingsRow, { SettingsToggle } from './SettingsRow';
 import React from 'react';
 import { Command } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -24,8 +25,10 @@ const CommandPaletteButtonSetting: React.FC<CommandPaletteButtonSettingProps> = 
     theme,
 }) => {
     const { t } = useTranslation();
-    const { autoHide, onToggle } = usePlayerChromeSettingsStore(useShallow(state => ({
+    const { autoHide, onToggle, hidden, setHidden } = usePlayerChromeSettingsStore(useShallow(state => ({
         autoHide: state.autoHideCommandPaletteButton,
+        hidden: state.hideCommandPaletteButton,
+        setHidden: state.handleToggleHideCommandPaletteButton,
         onToggle: state.handleToggleAutoHideCommandPaletteButton,
     })));
 
@@ -37,6 +40,9 @@ const CommandPaletteButtonSetting: React.FC<CommandPaletteButtonSettingProps> = 
         <div className="space-y-4">
             <SettingsSectionHeading icon={Command} label={t('options.commandPaletteButtonSection')} />
             <div className={`p-4 rounded-xl border ${settingsCardClass}`}>
+                <SettingsRow dividerClass="border-white/10" title={t('options.hideCommandPaletteButton')}
+                    control={<SettingsToggle ariaLabel={t('options.hideCommandPaletteButton')} checked={hidden} onChange={() => setHidden(!hidden)} offClass={toggleOffBackgroundClass} onColor={theme?.secondaryColor} />} />
+
                 <div className="flex items-center justify-between gap-4">
                     <div className="space-y-1 min-w-0">
                         <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>

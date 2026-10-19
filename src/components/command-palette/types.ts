@@ -216,6 +216,8 @@ export type CommandPalettePanelContext = {
 };
 
 export type CommandPaletteSettingsContext = {
+    toggleAndroidPerformance: () => void;
+    toggleHideCommandPaletteButton: () => void;
     openSettings: (
         initialTab?: SettingsModalInitialTab,
         initialSubview?: SettingsSubviewId | null,

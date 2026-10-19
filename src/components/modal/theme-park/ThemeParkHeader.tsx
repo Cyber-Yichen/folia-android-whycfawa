@@ -37,10 +37,11 @@ const ThemeParkHeader: React.FC<ThemeParkHeaderProps> = ({
     const selectedBg = isDaylight ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.12)';
 
     return (
-        <div className="flex flex-col gap-4 border-b border-white/10 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
+        <div className="theme-park-header flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
             <div className="flex min-w-0 items-center gap-3">
                 <button
                     type="button"
+                    aria-label={t('ui.back')}
                     onClick={onClose}
                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 transition-colors hover:bg-white/10"
                     style={{ color: 'var(--text-primary)' }}
@@ -51,7 +52,7 @@ const ThemeParkHeader: React.FC<ThemeParkHeaderProps> = ({
                     <div className="truncate text-lg font-semibold sm:text-xl" style={{ color: 'var(--text-primary)' }}>
                         Theme Park
                     </div>
-                    <div className="mt-1 truncate text-xs opacity-55" style={{ color: 'var(--text-secondary)' }}>
+                    <div className="theme-park-target-hint mt-1 truncate text-xs opacity-55" style={{ color: 'var(--text-secondary)' }}>
                         {targetHint}
                     </div>
                 </div>

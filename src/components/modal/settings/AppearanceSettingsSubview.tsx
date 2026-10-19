@@ -1,3 +1,5 @@
+import { useAndroidPerformanceStore } from '../../../stores/useAndroidPerformanceStore';
+import AiProviderSettings from './AiProviderSettings';
 import { isAndroidNativeRuntime } from '../../../utils/platform';
 import React, { useState } from 'react';
 import { Monitor, Palette, Settings2, LayoutGrid, PanelsTopLeft, Images, Download, Copy, Check, ChevronRight, AlertTriangle, KeyRound, Music2, Film } from 'lucide-react';
@@ -395,6 +397,9 @@ const AppearanceSettingsSubview: React.FC<AppearanceSettingsSubviewProps> = ({
     const applyImportedConfig = (config: any, keys: string[]) => {
         const has = (key: string) => keys.includes(key);
         try {
+            if (has('androidPerformanceMode') && typeof config.androidPerformanceMode === 'boolean') {
+                useAndroidPerformanceStore.getState().setEnabled(config.androidPerformanceMode);
+            }
             // 1. Restore Theme, per side: taking someone's night colours must not drag their day
             // ones along, so the side that was not picked keeps whatever is saved now.
             const savesTheme = Boolean(config.theme) && (has(THEME_LIGHT_KEY) || has(THEME_DARK_KEY));
@@ -727,6 +732,11 @@ const AppearanceSettingsSubview: React.FC<AppearanceSettingsSubviewProps> = ({
                     </div>
                 </div>
             </SettingsAnchor>
+
+            {!window.electron && <SettingsAnchor anchorId="aiProvider" label={t('ui.aiTheme')}>
+                <SettingsSectionHeading icon={Palette} label={t('ui.aiTheme')} />
+                <AiProviderSettings settingsCardClass={settingsCardClass} isDaylight={isDaylight} />
+            </SettingsAnchor>}
 
             {/* Section 2: Theme presets and edit options */}
             <SettingsAnchor anchorId="themePresets" label={t('options.themePresets')}>

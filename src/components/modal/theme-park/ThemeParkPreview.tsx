@@ -204,7 +204,7 @@ const ThemePreview: React.FC<{
 
         return (
             <div
-                className="relative isolate h-[min(46vh,460px)] min-h-[300px] overflow-hidden rounded-[30px] border shadow-[0_18px_50px_rgba(0,0,0,0.18)] lg:h-full lg:min-h-0"
+                className="relative isolate h-full min-h-0 overflow-hidden rounded-[30px] border shadow-[0_18px_50px_rgba(0,0,0,0.18)] lg:h-full lg:min-h-0"
                 style={{ borderColor }}
             >
                 <button

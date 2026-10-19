@@ -1,4 +1,5 @@
 import React from 'react';
+import AndroidCacheLimitSetting from './AndroidCacheLimitSetting';
 import { AudioWaveform, Check, Cloud, Command, Database, Disc3, Download, FolderOpen, HardDrive, Layers, Loader2, Pencil, PlayCircle, RefreshCw, Trash2, Upload, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { Theme } from '../../../types';
@@ -259,6 +260,7 @@ const StorageSettingsSection: React.FC<StorageSettingsSectionProps> = ({
                     </button>
                 </h3>
 
+                <AndroidCacheLimitSetting />
                 <div className="grid grid-cols-2 gap-3">
                     {cacheItems.map((item) => (
                         <div key={item.id} className={cacheRowClass}>

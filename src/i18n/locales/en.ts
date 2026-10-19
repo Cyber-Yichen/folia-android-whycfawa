@@ -597,6 +597,10 @@ export default {
       }
     },
     "commands": {
+      "android-performance-toggle": {"title": "Android performance mode", "description": "Switch between lighter rendering and full quality"},
+      "command-button-hide-toggle": {"title": "Hide command button", "description": "Show or hide the bottom command button"},
+      "settings-ai-provider": {"title": "AI theme API", "description": "Configure the AI theme provider"},
+
       "settings-ponder-hints": { "title": "Ponder tutorial hints", "description": "Choose when the hold-G tutorial hint appears" },
       "ponder-hints-always": { "title": "Ponder hints: always show", "description": "Show the hold-G hint on every teachable control" },
       "ponder-hints-unseen": { "title": "Ponder hints: only where I have not looked", "description": "Stop hinting a control once its tutorial has been watched" },
@@ -1607,6 +1611,12 @@ export default {
     "lyricMatchPriorityDesc": "When multiple lyric sources have high-confidence matches, prefer this source first."
   },
   "options": {
+    "androidPerformanceMode": "Android performance mode",
+    "androidPerformanceModeDesc": "Reduce animation quality and background blur for smoother playback.",
+    "hideCommandPaletteButton": "Hide command button",
+    "totalCacheLimit": "Cache size limit",
+    "totalCacheLimitDesc": "Audio, covers and lyrics share this limit. Older unused cache is removed automatically.",
+
     "ponderHints": "Ponder tutorial hints",
     "ponderHintsDesc": "Hovering a teachable control shows a hint to hold G, which opens an animated walkthrough of that gesture.",
     "ponderHintsAlways": "Always show",

@@ -1,0 +1,6 @@
+/* src/styles/androidPerformance.css */
+/* Keep the modal hierarchy while reducing large backdrop filter kernels. */
+html[data-folia-android-performance="true"] :is(.backdrop-blur-xl, .backdrop-blur-2xl, .backdrop-blur-3xl) {
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}

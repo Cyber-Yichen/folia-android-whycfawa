@@ -1,3 +1,4 @@
+import AndroidPerformanceSetting from './AndroidPerformanceSetting';
 import React, { useState } from 'react';
 import { Gauge, MonitorCog } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -102,6 +103,7 @@ const GraphicsSettingsSubview: React.FC<GraphicsSettingsSubviewProps> = ({
             <SettingsAnchor anchorId="graphicsPerformance" label={t('options.labPerformanceSection')} className="space-y-4">
                 <SettingsSectionHeading icon={MonitorCog} label={t('options.labPerformanceSection')} />
                 <div className={`rounded-xl border overflow-hidden ${settingsCardClass}`}>
+                    <AndroidPerformanceSetting isDaylight={isDaylight} onColor={theme?.secondaryColor} />
                     <SettingsRow
                         title={t('options.enableStaticMode')}
                         description={t('options.enableStaticModeDesc')}
@@ -149,7 +151,7 @@ const GraphicsSettingsSubview: React.FC<GraphicsSettingsSubviewProps> = ({
                                 aria-label={t('options.visualizerFrameRateValue')}
                                 disabled={!isVisualizerFrameRateLimiterEnabled}
                             />
-                            <div className="grid grid-cols-3 text-[11px] font-mono opacity-50" style={{ color: 'var(--text-secondary)' }}>
+                            <div className="grid grid-cols-4 text-[11px] font-mono opacity-50" style={{ color: 'var(--text-secondary)' }}>
                                 {VISUALIZER_FRAME_RATE_OPTIONS.map((frameRate, index) => (
                                     <span key={frameRate} className={index === 1 ? 'text-center' : index === 2 ? 'text-right' : ''}>
                                         {frameRate}

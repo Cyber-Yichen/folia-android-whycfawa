@@ -1,3 +1,4 @@
+import { useAndroidPerformanceStore } from '../../stores/useAndroidPerformanceStore';
 import { collectVisualizerTunings } from '../../components/visualizer/tuningRegistry';
 import { readStoredThemeAutoGenerateEnabled, readStoredThemeAutoSwitchEnabled, readStoredThemeGenerationSource } from '../themePreferences';
 import type { CappellaAvatarImage, CappellaEmojiImage, CappellaTuning, MonetBackgroundImage, MonetBackgroundTuning, MonetPortraitImage, MonetTuning, NomandBackgroundTuning } from '../../types';
@@ -42,6 +43,7 @@ export function buildVisualSettingsConfig(): Record<string, unknown> {
     disableVisualizerVignette: storeVisualizer.disableVisualizerVignette,
     // Static mode is not merely an audio-reactivity switch: it selects the low-motion branch inside
     // several renderers, so a web overlay without it animates where the main window does not.
+    androidPerformanceMode: useAndroidPerformanceStore.getState().enabled,
     staticMode: storeThemeSettings.staticMode,
     visualizerOpacity: storeVisualizer.visualizerOpacity,
     hidePlayerTranslationSubtitle: storeTypographySettings.hidePlayerTranslationSubtitle,

@@ -178,7 +178,7 @@ describe('frameRateLimiter', () => {
         }
     });
 
-    // 安卓手机 WebView 上，用户从未手动设置过帧率时默认 30FPS（绘制次数减半、明显降温省电）。
+    // 安卓手机 WebView 上，用户从未手动设置过帧率时默认 60FPS。
     // 用户一旦手动选过（storage 有值）或调用方显式覆盖，就永远以用户为准。
     describe('Android WebView default frame rate', () => {
         const installFakeWindow = (storedValue: string | null) => {
@@ -208,7 +208,7 @@ describe('frameRateLimiter', () => {
             return runs;
         };
 
-        it('caps at 30 FPS when nothing was ever stored', async () => {
+        it('defaults to 60 FPS when nothing was ever stored', async () => {
             vi.resetModules();
             const previousWindow = (globalThis as { window?: unknown }).window;
             try {
@@ -219,9 +219,9 @@ describe('frameRateLimiter', () => {
 
                 limiter.installGlobalVisualizerFrameRateLimiter();
                 const runs = countFramesPerSecond(fakeWindow, nativeCallbacks);
-                // 30FPS ≈ 30 帧/秒；60FPS 会到 60 上下，所以上界卡在 40 就足以区分。
-                expect(runs).toBeGreaterThan(20);
-                expect(runs).toBeLessThanOrEqual(40);
+                // A 16ms native timeline should retain roughly sixty frames.
+                expect(runs).toBeGreaterThan(55);
+                expect(runs).toBeLessThanOrEqual(65);
             } finally {
                 Object.defineProperty(globalThis, 'window', { configurable: true, value: previousWindow });
                 vi.resetModules();

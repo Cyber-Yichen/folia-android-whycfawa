@@ -8,6 +8,7 @@ import type { SettingsSubviewId } from '../../../../stores/useSettingsModalStore
 // navigation destination.
 
 export const SETTINGS_ANCHOR_DEFINITIONS = {
+    aiProvider: { section: 'appearance', labelKey: 'ui.aiTheme', webOnly: true },
     // AppearanceSettingsSubview
     lyricsRenderer: { section: 'appearance', labelKey: 'options.lyricsRenderer' },
     themePresets: { section: 'appearance', labelKey: 'options.themePresets' },
@@ -76,7 +77,7 @@ export const SETTINGS_ANCHOR_DEFINITIONS = {
     // LabSettingsModal
     labPlayerUi: { section: 'lab', labelKey: 'options.labPlayerUiSection' },
     labWindowAndTools: { section: 'lab', labelKey: 'options.labWindowAndToolsSection' },
-} as const satisfies Record<string, { section: SettingsSubviewId; labelKey: string; electronOnly?: boolean; keyboardOnly?: boolean; requiresLibrarySuiteChoice?: boolean; requiresBravaisSuite?: boolean }>;
+} as const satisfies Record<string, { section: SettingsSubviewId; labelKey: string; electronOnly?: boolean; webOnly?: boolean; keyboardOnly?: boolean; requiresLibrarySuiteChoice?: boolean; requiresBravaisSuite?: boolean }>;
 
 export type SettingsAnchorId = keyof typeof SETTINGS_ANCHOR_DEFINITIONS;
 

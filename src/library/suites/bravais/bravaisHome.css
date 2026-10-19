@@ -667,3 +667,15 @@
 .bravais-seam-menu.is-home button.is-shortcut svg { color: var(--text-accent, currentColor); opacity: 1; }
 
 :root[data-reduce-motion~='lattice'] .bravais-seam-home .bravais-seam-shortcut { transition: none; }
+
+/* Android category icons retain their orientation and a consistent touch target. */
+.bravais-seam-home .bravais-seam-tabs .bravais-seam-home-tab.is-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    writing-mode: horizontal-tb;
+    min-width: 32px;
+    min-height: 32px;
+    padding: 6px;
+    letter-spacing: 0;
+}

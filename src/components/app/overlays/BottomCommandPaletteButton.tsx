@@ -17,6 +17,7 @@ const ACTIVITY_EVENTS = ['pointerdown', 'pointermove', 'touchstart', 'keydown', 
 
 const BottomCommandPaletteButton: React.FC = () => {
     const { t } = useTranslation();
+    const hidden = usePlayerChromeSettingsStore(state => state.hideCommandPaletteButton);
     const autoHide = usePlayerChromeSettingsStore(state => state.autoHideCommandPaletteButton);
     // 全沉浸模式：强制隐藏命令面板按钮。关闭后按钮回到 autoHide 决定的状态；
     // 如果 autoHide 本来就是开的，则保持自动隐藏，不会被强制常显。
@@ -36,7 +37,7 @@ const BottomCommandPaletteButton: React.FC = () => {
     const hideTimerRef = useRef<number | null>(null);
 
     useEffect(() => {
-        if (!autoHide) {
+        if (!autoHide || hidden) {
             if (hideTimerRef.current !== null) {
                 window.clearTimeout(hideTimerRef.current);
                 hideTimerRef.current = null;
@@ -70,9 +71,9 @@ const BottomCommandPaletteButton: React.FC = () => {
                 hideTimerRef.current = null;
             }
         };
-    }, [autoHide]);
+    }, [autoHide, hidden]);
 
-    const shown = !immersiveActiveHere && !paletteOpen && (!autoHide || visible);
+    const shown = !hidden && !immersiveActiveHere && !paletteOpen && (!autoHide || visible);
 
     return (
         <button

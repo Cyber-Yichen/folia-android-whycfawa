@@ -496,6 +496,7 @@ const decompressLumiere = (o: any) => normalizeLumiereTuning(Object.fromEntries(
 
 export const compressConfig = (config: any): string => {
     const minified: any = {};
+    if (typeof config.androidPerformanceMode === 'boolean') minified.apm = config.androidPerformanceMode;
     if (config.theme) {
         minified.t = {
             l: compressTheme(config.theme.light),
@@ -623,6 +624,7 @@ export const decompressConfig = (str: string): any => {
         // The now playing card's three keys. Listed like the rest so a hand-written JSON that only
         // carries the card is still recognised as the minified shape rather than falling through to
         // the long-name branch, where none of them is a valid key.
+        || parsed.apm !== undefined
         || parsed.stp !== undefined
         || parsed.stpt !== undefined
         || parsed.stph !== undefined
@@ -634,6 +636,7 @@ export const decompressConfig = (str: string): any => {
         || parsed.lwbb !== undefined;
     if (isMinified) {
         const decompressed: any = {};
+        if (typeof parsed.apm === 'boolean') decompressed.androidPerformanceMode = parsed.apm;
         if (parsed.t) {
             decompressed.theme = {
                 light: decompressTheme(parsed.t.l),
@@ -708,7 +711,7 @@ export const decompressConfig = (str: string): any => {
         const validKeys = [
             'theme', 'visualizerMode', 'randomVisualizerModePerSong', 'visualizerBackgroundMode', 'backgroundOpacity',
             'useCoverColorBg', 'disableVisualizerGeometricBackground', 'disableVisualizerVignette', 'staticMode',
-            'visualizerOpacity', 'hidePlayerTranslationSubtitle', 'showSubtitleTranslation', 'subtitleContentMode',
+            'androidPerformanceMode', 'visualizerOpacity', 'hidePlayerTranslationSubtitle', 'showSubtitleTranslation', 'subtitleContentMode',
             'subtitleOverlayBackground', 'subtitleUpcomingLyricsBlur', 'subtitleOverlayOpacity',
             'showHarmonySubtitle', 'harmonySubtitleBackground',
             'lyricsFontStyle', 'lyricsFontScale', 'lyricsFontWeight', 'lyricsFontFallbackFamilies',

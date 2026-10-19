@@ -64,6 +64,7 @@ const FIELD_LABEL_KEYS: Record<string, string> = {
     useCoverColorBg: 'theme.addCoverColor',
     disableVisualizerGeometricBackground: 'options.disableVisualizerGeometricBackground',
     disableVisualizerVignette: 'options.disableVisualizerVignette',
+    androidPerformanceMode: 'options.androidPerformanceMode',
     staticMode: 'options.staticMode',
     lyricsCustomFontFamily: 'options.customFont',
     songThemeAutoSwitchEnabled: 'options.autoSwitchSongTheme',
