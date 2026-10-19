@@ -236,7 +236,7 @@ const HomeSeamHead: React.FC<{
                         {tabs.map(tab => <span key={tab.key} className={iconTabs ? 'bravais-seam-home-tab is-icon' : 'bravais-seam-home-tab'}>{iconTabs ? <HomeTabIcon tab={tab.key} /> : tab.label}</span>)}
                     </div>
                 ) : (
-                    <div className={`bravais-seam-tabs${shorts ? ' is-short' : ''}`} role="tablist" aria-label={title} aria-orientation="vertical">
+                    <div className={`bravais-seam-tabs${shorts ? ' is-short' : ''}`} role="tablist" aria-label={title} aria-orientation={iconTabs ? 'horizontal' : 'vertical'}>
                         {tabs.map((tab, index) => (
                             <button
                                 key={tab.key}
@@ -310,7 +310,7 @@ const BravaisSeamHome: React.FC<{
         </button>
     );
     return (
-        <div className={`bravais-seam-home${compact ? ' is-compact' : ''}${short ? ' has-short-tabs' : ''}`} data-bravais-home-seam
+        <div className={`bravais-seam-home${isAndroidNativeRuntime() ? ' is-android' : ''}${compact ? ' is-compact' : ''}${short ? ' has-short-tabs' : ''}`} data-bravais-home-seam
             data-bravais-home-fit={level} data-bravais-home-shortcuts={shortcuts ? (shortcutsInColumn ? 'column' : 'menu') : undefined}>
             <div ref={navRef} className={`bravais-seam-home-nav${overflowing ? ' is-overflowing' : ''}`}>
                 <div className="bravais-seam-home-nav-content">

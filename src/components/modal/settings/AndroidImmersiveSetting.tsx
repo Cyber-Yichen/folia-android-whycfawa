@@ -1,3 +1,4 @@
+import SettingsRow, { SettingsToggle } from './SettingsRow';
 import React from 'react';
 import { EyeOff } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -29,6 +30,8 @@ const AndroidImmersiveSetting: React.FC<AndroidImmersiveSettingProps> = ({
     const enabled = useAndroidLayoutSettingsStore(state => state.immersiveModeEnabled);
     const setEnabled = useAndroidLayoutSettingsStore(state => state.setImmersiveModeEnabled);
 
+    const hideTransport = useAndroidLayoutSettingsStore(state => state.immersiveHideTransport);
+    const setHideTransport = useAndroidLayoutSettingsStore(state => state.setImmersiveHideTransport);
     if (!isAndroidNativeRuntime()) return null;
 
     const toggleOffBackgroundClass = isDaylight ? 'bg-zinc-200' : 'bg-[#2A2D35]';
@@ -36,28 +39,15 @@ const AndroidImmersiveSetting: React.FC<AndroidImmersiveSettingProps> = ({
     return (
         <div className="space-y-4">
             <SettingsSectionHeading icon={EyeOff} label={t('options.immersiveMode')} />
-            <div className={`p-4 rounded-xl border ${settingsCardClass}`}>
-                <div className="flex items-center justify-between gap-4">
-                    <div className="space-y-1 min-w-0">
-                        <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                            {t('options.immersiveMode')}
-                        </div>
-                        <div className="text-xs opacity-50 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-                            {t('options.immersiveModeDesc')}
-                        </div>
-                    </div>
-                    <button
-                        type="button"
-                        role="switch"
-                        aria-checked={enabled}
-                        aria-label={t('options.immersiveMode')}
-                        onClick={() => setEnabled(!enabled)}
-                        className={`w-12 h-6 rounded-full p-1 transition-colors shrink-0 ${!enabled ? toggleOffBackgroundClass : ''}`}
-                        style={{ backgroundColor: enabled ? theme?.secondaryColor || 'rgba(114, 119, 134, 1)' : undefined }}
-                    >
-                        <div className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${enabled ? 'translate-x-6' : 'translate-x-0'}`} />
-                    </button>
-                </div>
+            <div className={`rounded-xl border overflow-hidden ${settingsCardClass}`}>
+                <SettingsRow title={t('options.immersiveMode')} description={t('options.immersiveModeDesc')}
+                    dividerClass={isDaylight ? 'border-zinc-200' : 'border-white/10'}
+                    control={<SettingsToggle ariaLabel={t('options.immersiveMode')} checked={enabled}
+                        onChange={() => setEnabled(!enabled)} offClass={toggleOffBackgroundClass} onColor={theme?.secondaryColor} />} />
+                <SettingsRow title={t('options.immersiveHideTransport')} dividerClass="" isLast
+                    control={<SettingsToggle ariaLabel={t('options.immersiveHideTransport')} checked={hideTransport}
+                        onChange={() => setHideTransport(!hideTransport)} disabled={!enabled}
+                        offClass={toggleOffBackgroundClass} onColor={theme?.secondaryColor} />} />
             </div>
         </div>
     );

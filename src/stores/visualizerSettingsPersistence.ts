@@ -21,6 +21,19 @@ import { parseVisualizerFrameRate, VISUALIZER_FRAME_RATE_STORAGE_KEY } from '../
 import { sanitizeUrlBackgroundList } from '../utils/urlBackground';
 import { normalizeLumiereTuning } from '../utils/lumiereTuning';
 
+import { getStoredString } from './storagePrimitives';
+import { normalizeRandomVisualizerModes } from '../utils/randomVisualizerModes';
+
+export const RANDOM_VISUALIZER_MODES_STORAGE_KEY = 'random_visualizer_modes';
+
+export const readStoredRandomVisualizerModes = () => {
+    try {
+        return normalizeRandomVisualizerModes(JSON.parse(getStoredString(RANDOM_VISUALIZER_MODES_STORAGE_KEY, 'null')));
+    } catch {
+        return normalizeRandomVisualizerModes(null);
+    }
+};
+
 export const VISUALIZER_OPACITY_STORAGE_KEY = 'visualizer_opacity';
 
 // src/stores/visualizerSettingsPersistence.ts

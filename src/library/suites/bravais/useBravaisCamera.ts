@@ -207,12 +207,15 @@ export const useBravaisCamera = ({
     const applyCamera = useCallback((next: LatticeCamera, updateBounds?: boolean) => {
         const view = frameRef.current.view;
         if (!view) return;
-        moveTo(constrain(viewCenterFromCamera(next, view)), Boolean(updateBounds));
+        const zoomedView = { ...view, scale: next.scale };
+        frameRef.current.view = zoomedView;
+        moveTo(constrain(viewCenterFromCamera(next, zoomedView)), Boolean(updateBounds));
     }, [constrain, frameRef, moveTo]);
     const getWorldBounds = useCallback((camera: LatticeCamera) => {
         const view = frameRef.current.view;
         if (!view) return { left: 0, right: 0, top: 0, bottom: 0 };
-        return getViewWorldBounds(viewCenterFromCamera(camera, view), view, { seamWidth: frameRef.current.openWidth });
+        const zoomedView = { ...view, scale: camera.scale };
+        return getViewWorldBounds(viewCenterFromCamera(camera, zoomedView), zoomedView, { seamWidth: frameRef.current.openWidth });
     }, [frameRef]);
     const pointer = useWallPointerPan({
         applyCamera,
@@ -244,15 +247,15 @@ export const useBravaisCamera = ({
         },
         onPointerUp: (event: PointerEvent<HTMLDivElement>) => {
             panUp(event);
-            draggingRef.current = false;
-            if (!animationRef.current) settle();
+            draggingRef.current = pointer.hasActivePointers();
+            if (!draggingRef.current && !animationRef.current) settle();
         },
         onPointerCancel: (event: PointerEvent<HTMLDivElement>) => {
             panCancel(event);
-            draggingRef.current = false;
-            settle();
+            draggingRef.current = pointer.hasActivePointers();
+            if (!draggingRef.current) settle();
         },
-    }), [didDragRef, onClickCapture, onPointerMove, panCancel, panDown, panUp, settle]);
+    }), [didDragRef, onClickCapture, onPointerMove, panCancel, panDown, panUp, pointer, settle]);
 
     return { bounds, moveTo, tweenTo, checkCull, stopCamera, syncPointerCamera, pointer: pointerWithRange, setRange, settle };
 };

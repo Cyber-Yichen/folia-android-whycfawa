@@ -1,83 +1,62 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useImmersiveChromeStore } from '../stores/useImmersiveChromeStore';
+import { useAndroidLayoutSettingsStore } from '../stores/useAndroidLayoutSettingsStore';
+import { useAppViewStore } from '../stores/useAppViewStore';
+import { useSettingsModalStore } from '../stores/useSettingsModalStore';
+import { isAndroidNativeRuntime } from '../utils/platform';
 
 // src/hooks/useImmersiveChromeReveal.ts
-// 全沉浸模式在播放界面的“触摸唤回”：进入时收起，触摸屏幕后显示，静止一段时间再收起。
-
-/**
- * 与播放页的自动隐藏共用同一套节奏：3 秒无操作收起，交互时唤回。
- *
- * 与原有自动隐藏的关系：`autoHidePlayerChrome` 已经打开时不接管，避免两个计时器
- * 互相打架；此时全沉浸只保证第一次进入播放界面是收起的。
- */
-const IMMERSIVE_AUTO_HIDE_DELAY_MS = 3000;
-
-const ACTIVITY_EVENTS = ['pointerdown', 'pointermove', 'touchstart', 'keydown', 'wheel'] as const;
-
-type UseImmersiveChromeRevealOptions = {
-    /** 全沉浸偏好已打开 */
+// Native playback enters immersion ten seconds after transport disclosure closes.
+export const IMMERSIVE_AUTO_HIDE_DELAY_MS = 10000;
+type Options = {
     immersiveEnabled: boolean;
-    /** 当前处于播放界面 */
     isPlayerView: boolean;
-    /** 播放页原有的自动隐藏偏好；它开着时这里不接管 */
     autoHidePlayerChrome: boolean;
+    isPlaying?: boolean;
 };
-
-export const useImmersiveChromeReveal = ({
-    immersiveEnabled,
-    isPlayerView,
-    autoHidePlayerChrome,
-}: UseImmersiveChromeRevealOptions): void => {
+export const useImmersiveChromeReveal = ({ immersiveEnabled, isPlayerView, isPlaying = true }: Options): void => {
+    const expanded = useImmersiveChromeStore(state => state.playerBarExpanded);
+    const hidden = useImmersiveChromeStore(state => state.immersiveChromeHidden);
     const setHidden = useImmersiveChromeStore(state => state.setImmersiveChromeHidden);
-    const timerRef = useRef<number | null>(null);
-    const ownsRevealRef = useRef(false);
-
+    const hideTransport = useAndroidLayoutSettingsStore(state => state.immersiveHideTransport);
+    const settingsOpen = useSettingsModalStore(state => state.settingsModalState.isOpen || state.isSubSettingsViewOpen);
+    const panelOpen = useAppViewStore(state => state.isPanelOpen || state.isCommandFilterOpen);
     useEffect(() => {
-        const clearTimer = () => {
-            if (timerRef.current !== null) {
-                window.clearTimeout(timerRef.current);
-                timerRef.current = null;
-            }
+        if (!isAndroidNativeRuntime()) return;
+        const root = document.documentElement;
+        root.dataset.foliaAndroidImmersive = hidden && immersiveEnabled && isPlayerView ? 'hidden' : 'visible';
+        root.dataset.foliaAndroidHideTransport = String(hideTransport);
+    }, [hidden, hideTransport, immersiveEnabled, isPlayerView]);
+    useEffect(() => {
+        let timer: number | undefined;
+        const contacts = new Set<number>();
+        const clear = () => { window.clearTimeout(timer); timer = undefined; };
+        const schedule = () => {
+            clear();
+            if (expanded || contacts.size) return;
+            timer = window.setTimeout(() => setHidden(true), IMMERSIVE_AUTO_HIDE_DELAY_MS);
         };
-
-        // 只有“全沉浸 + 播放界面 + 原有自动隐藏未开启”时才由本钩子接管。
-        const owns = immersiveEnabled && isPlayerView && !autoHidePlayerChrome;
-        ownsRevealRef.current = owns;
-
-        if (!owns) {
-            clearTimer();
-            // 不接管时把状态复位为「收起」：全沉浸的语义是进入播放界面先收起，
-            // 之后由原有机制（自动隐藏 / 常显）决定何时唤回。
-            setHidden(immersiveEnabled && isPlayerView);
-            return clearTimer;
-        }
-
-        // 进入播放界面先收起。
-        setHidden(true);
-
-        const scheduleHide = () => {
-            clearTimer();
-            timerRef.current = window.setTimeout(() => {
-                timerRef.current = null;
-                setHidden(true);
-            }, IMMERSIVE_AUTO_HIDE_DELAY_MS);
+        setHidden(false);
+        if (!isAndroidNativeRuntime() || !immersiveEnabled || !isPlayerView || !isPlaying || settingsOpen || panelOpen) return clear;
+        const reveal = () => { setHidden(false); schedule(); };
+        const down = (event: PointerEvent) => {
+            contacts.add(event.pointerId); clear(); setHidden(false);
         };
-        const reveal = () => {
-            setHidden(false);
-            scheduleHide();
-        };
-
-        ACTIVITY_EVENTS.forEach(eventName => {
-            window.addEventListener(eventName, reveal, { passive: true });
-        });
-
+        const up = (event: PointerEvent) => { contacts.delete(event.pointerId); schedule(); };
+        window.addEventListener('pointerdown', down, true);
+        window.addEventListener('pointerup', up, true);
+        window.addEventListener('pointercancel', up, true);
+        window.addEventListener('keydown', reveal);
+        window.addEventListener('wheel', reveal, { passive: true });
+        schedule();
         return () => {
-            clearTimer();
-            ACTIVITY_EVENTS.forEach(eventName => {
-                window.removeEventListener(eventName, reveal);
-            });
+            clear();
+            window.removeEventListener('pointerdown', down, true);
+            window.removeEventListener('pointerup', up, true);
+            window.removeEventListener('pointercancel', up, true);
+            window.removeEventListener('keydown', reveal);
+            window.removeEventListener('wheel', reveal);
         };
-    }, [autoHidePlayerChrome, immersiveEnabled, isPlayerView, setHidden]);
+    }, [expanded, immersiveEnabled, isPlayerView, isPlaying, panelOpen, settingsOpen, setHidden]);
 };
-
 export default useImmersiveChromeReveal;

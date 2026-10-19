@@ -595,6 +595,8 @@ export default {
       }
     },
     "commands": {
+      "android-immersive-toggle": {"title": "Pemutaran imersif", "description": "Sembunyikan kontrol pemutaran otomatis"},
+      "android-immersive-transport-toggle": {"title": "Sembunyikan bilah pemutar", "description": "Sertakan bilah pemutar dalam sembunyi otomatis"},
       "android-performance-toggle": {"title": "Mode performa Android", "description": "Beralih antara render ringan dan kualitas penuh"},
       "command-button-hide-toggle": {"title": "Sembunyikan tombol perintah", "description": "Tampilkan atau sembunyikan tombol perintah"},
       "settings-ai-provider": {"title": "API tema AI", "description": "Atur penyedia tema AI"},
@@ -614,6 +616,7 @@ export default {
       "settings-help": { "title": "Buka Bantuan", "description": "Buka panduan dan pintasan" },
       "ponder-current-page": { "title": "Ponder halaman ini", "description": "Buka panduan interaktif untuk halaman saat ini" },
       "settings-options": { "title": "Buka Opsi", "description": "Buka pusat opsi" },
+      "settings-now-playing-card-position": { "title": "Atur posisi kartu lagu", "description": "Seret kartu yang sedang diputar ke posisi baru" },
       "settings-appearance": { "title": "Pengaturan tampilan", "description": "Buka pengaturan visual dan tampilan" },
       "settings-general": { "title": "Pengaturan umum", "description": "Buka preferensi aplikasi umum" },
       "settings-playback": { "title": "Pengaturan pemutaran", "description": "Buka pengaturan perilaku pemutaran" },
@@ -842,6 +845,7 @@ export default {
     }
   },
   "ui": {
+    "visualizerRandom": "Acak",
     "back": "Kembali",
     "noTrack": "Tidak Ada Trek",
     "selectPlaceholder": "Pilih...",
@@ -1604,6 +1608,37 @@ export default {
     "lyricMatchPriorityDesc": "Saat beberapa sumber lirik memiliki kecocokan berkualitas tinggi, utamakan sumber ini terlebih dahulu."
   },
   "options": {
+    "stageTrackPillResetPosition": "Atur ulang posisi",
+    "aiModel": "Model",
+    "aiModelsUnavailable": "Daftar model tidak tersedia. Masukkan nama model secara manual.",
+    "aiChooseModel": "Pilih model",
+    "aiManualModel": "Masukkan model manual",
+    "aiRefreshModels": "Ambil model",
+    "aiCustomProvider": "Kustom",
+    "stageTrackPillPositioningHint": "Seret kartu untuk memindahkannya.",
+    "stageTrackPillReposition": "Atur posisi kartu lagu",
+    "randomPoolChoose": "Pilih kumpulan acak",
+    "randomPoolDesc": "Setiap lagu beralih ke salah satu gaya yang dipilih, dengan pengaturan tersimpan milik gaya itu.",
+    "randomPoolCount": "{{selected}} dari {{total}}",
+    "randomPool": "Kumpulan acak",
+    "randomVisualizerReroll": "Ambil gaya lain dari kumpulan",
+    "randomVisualizerAtLeastOne": "Pilih setidaknya satu gaya",
+    "randomVisualizerCurrentStyle": "Gaya saat ini",
+    "randomVisualizerSelectAll": "Pilih semua",
+    "randomVisualizerModes": "Gaya untuk diacak",
+    "customCacheLimit": "Kustom",
+    "applyCacheLimit": "Terapkan",
+
+    "immersiveHideTransport": "Sembunyikan kontrol pemutaran secara otomatis",
+
+    "playerControlsExpand": "Perluas kontrol pemutar",
+    "playerControlsCollapse": "Ciutkan kontrol pemutar",
+    "playerControlsPrevious": "Lagu sebelumnya",
+    "playerControlsNext": "Lagu berikutnya",
+
+    "showCommandPaletteButton": "Tampilkan tombol perintah",
+    "androidPerformanceSeamClearDisabled": "Tidak tersedia dalam mode performa",
+
     "androidPerformanceMode": "Mode performa Android",
     "androidPerformanceModeDesc": "Kurangi kualitas animasi dan keburaman latar agar lebih lancar.",
     "hideCommandPaletteButton": "Sembunyikan tombol perintah",
@@ -1799,7 +1834,7 @@ export default {
  "bottomUiSettings": "Kontrol Bawah",
  "adaptiveDisplay": "Resolusi layar adaptif",
  "immersiveMode": "Mode imersif penuh",
- "immersiveModeDesc": "Hanya berlaku di tampilan pemutar: bilah kontrol, kartu lagu berikutnya, tombol palette perintah, dan tombol gerigi/panel kanan disembunyikan otomatis agar panggung lebih bersih. Layar jelajah playlist dan lagu tidak terpengaruh. Saat dimatikan, tombol palette perintah tampil kembali; jika Sembunyikan otomatis sudah aktif, tombol tetap tersembunyi otomatis.",
+ "immersiveModeDesc": "Sembunyikan kontrol 10 detik setelah bilah pemutar mengecil. Ketuk layar untuk menampilkannya.",
  "phoneFit": "Tata letak ponsel",
  "orientationFit": "Kompatibilitas potret / lanskap",
  "commandPaletteButtonSection": "Tombol palette perintah",
@@ -2027,7 +2062,7 @@ export default {
     "autoHideCursorWithPlayerChrome": "Sembunyikan kursor juga",
     "autoHideCursorWithPlayerChromeDesc": "Setelah kontrol tersembunyi, penunjuk tetikus ikut menghilang dan muncul lagi begitu tetikus digerakkan. Matikan untuk tetap menampilkan penunjuk.",
     "stageTrackPill": "Kartu lagu",
-    "stageTrackPillDesc": "Kartu now playing di kiri bawah pemutar dan antrean putar: sembunyi otomatis setelah beberapa saat, atau selalu tampil / tersembunyi.",
+    "stageTrackPillDesc": "Kartu now playing di pemutar dan antrean putar: sembunyi otomatis setelah beberapa saat, atau selalu tampil / tersembunyi.",
     "stageTrackPillMode_auto": "Berwaktu",
     "stageTrackPillMode_always": "Selalu tampil",
     "stageTrackPillMode_never": "Jangan tampilkan",

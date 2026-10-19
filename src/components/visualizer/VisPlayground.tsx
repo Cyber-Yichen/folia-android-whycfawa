@@ -1255,7 +1255,7 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
                     <VisPlaygroundStylePicker
                         value={visualizerMode}
                         onChange={(mode) => {
-                            onVisualizerModeChange?.(mode);
+                            if (mode !== '__random__') onVisualizerModeChange?.(mode);
                             setActiveEditSection('visualizer');
                         }}
                         theme={previewTheme}

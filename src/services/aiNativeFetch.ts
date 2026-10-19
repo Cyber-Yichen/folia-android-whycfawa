@@ -73,7 +73,7 @@ const buildHeaders = (entries: NativeHttpResponse['headers']): Headers => {
  * 返回一个与 fetch 同形的函数：安卓上走原生桥，其他平台回落到全局 fetch。
  * 只覆盖 AI 需要的用法（JSON 文本请求体），不做流式读取。
  */
-export const createAiFetch = (): typeof fetch => {
+export const createAiFetch = (timeoutMs = AI_REQUEST_TIMEOUT_MS): typeof fetch => {
     const plugin = getNativePlugin();
     if (!plugin?.httpRequest) {
         return ((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init)) as typeof fetch;
@@ -108,7 +108,7 @@ export const createAiFetch = (): typeof fetch => {
             bodyText,
             bodyBase64: '',
             redirect: init?.redirect || request?.redirect || 'follow',
-            timeoutMs: AI_REQUEST_TIMEOUT_MS,
+            timeoutMs,
         });
 
         const bytes = base64ToBytes(result.bodyBase64);

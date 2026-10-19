@@ -1,211 +1,96 @@
-import React, { useState } from 'react';
-import { Check, Loader2, Sparkles, X } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Check, Loader2, RefreshCw, Sparkles, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import {
-    readAiSettings,
-    writeAiSettings,
-    type AiProviderId,
-} from '../../../services/aiSettings';
-import {
-    testConfiguredAiConnection,
-    type AiConnectionTestResult,
-} from '../../../services/aiThemeClient';
+import { AI_PROVIDER_PRESETS } from '../../../../shared/aiProviderPresets.mjs';
+import { readAiSettings, writeAiSettings, type AiSettings } from '../../../services/aiSettings';
+import { testConfiguredAiConnection, type AiConnectionTestResult } from '../../../services/aiThemeClient';
+import { listAiModels, type AiModel } from '../../../services/ai/modelDiscovery';
+import { CustomSelect } from '../../shared/CustomSelect';
 
-// src/components/modal/settings/AiProviderSettings.tsx
-// 安卓/网页版没有 Electron 主进程，AI 凭据由用户自己填并保存在本机。
-// 桌面版沿用主进程设置，这里不参与。
-
-type AiProviderSettingsProps = {
-    settingsCardClass: string;
-    isDaylight: boolean;
-};
-
-type TestState = 'idle' | 'running' | 'done';
-
-const AiProviderSettings: React.FC<AiProviderSettingsProps> = ({ settingsCardClass, isDaylight }) => {
+// Provider presets and manual fallback share the Android native completion configuration.
+type Props = { settingsCardClass: string; isDaylight: boolean };
+const AiProviderSettings: React.FC<Props> = ({ settingsCardClass, isDaylight }) => {
     const { t } = useTranslation();
-    const [settings, setSettings] = useState(() => readAiSettings());
-    const [testState, setTestState] = useState<TestState>('idle');
+    const [settings, setSettings] = useState(readAiSettings);
+    const [models, setModels] = useState<AiModel[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [manual, setManual] = useState(true);
+    const [modelError, setModelError] = useState(false);
+    const [testing, setTesting] = useState(false);
     const [testResult, setTestResult] = useState<AiConnectionTestResult | null>(null);
-
-    // 即改即存：没有「保存」按钮，避免用户填完忘了提交。
-    const update = (patch: Parameters<typeof writeAiSettings>[0]) => {
+    const generation = useRef(0);
+    useEffect(() => () => { generation.current += 1; }, []);
+    const update = (patch: Partial<AiSettings>, connectionChanged = true) => {
+        generation.current += 1;
         setSettings(writeAiSettings(patch));
-        setTestState('idle');
-        setTestResult(null);
+        setTestResult(null); setTesting(false); setLoading(false);
+        if (connectionChanged) { setModels([]); setManual(true); setModelError(false); }
     };
-
+    const gemini = settings.provider === 'gemini';
+    const model = gemini ? settings.geminiModel : settings.openaiApiModel;
+    const key = gemini ? settings.geminiApiKey : settings.openaiApiKey;
+    const chooseModel = (value: string) => update(gemini ? { geminiModel: value } : { openaiApiModel: value }, false);
+    const discover = async () => {
+        const current = ++generation.current;
+        setLoading(true); setModelError(false); setTestResult(null); setTesting(false);
+        const result = await listAiModels(settings);
+        if (current !== generation.current) return;
+        setLoading(false);
+        if (result.ok) { setModels(result.models); setManual(false); }
+        else { setModels([]); setManual(true); setModelError(true); }
+    };
     const runTest = async () => {
-        if (testState === 'running') return;
-        setTestState('running');
-        setTestResult(null);
+        const current = ++generation.current;
+        setTesting(true); setLoading(false); setTestResult(null);
         const result = await testConfiguredAiConnection();
-        setTestResult(result);
-        setTestState('done');
+        if (current !== generation.current) return;
+        setTesting(false); setTestResult(result);
     };
-
-    const fieldClass = 'w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm focus:outline-none focus:border-white/30 transition-colors';
-    const ghostButtonClass = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/15 text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-default';
-    const rowDividerClass = isDaylight ? 'border-black/5' : 'border-white/5';
-
-    const renderProviderOption = (id: AiProviderId, label: string) => {
-        const selected = settings.provider === id;
-        return (
-            <button
-                key={id}
-                type="button"
-                aria-pressed={selected}
-                onClick={() => update({ provider: id })}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${selected
-                    ? 'bg-white/15 text-[var(--text-primary)]'
-                    : 'opacity-55 hover:opacity-85 text-[var(--text-primary)]'}`}
-            >
-                {label}
-            </button>
-        );
-    };
-
-    return (
-        <div className={`rounded-xl border overflow-hidden ${settingsCardClass}`}>
-            <div className={`flex flex-wrap items-center justify-between gap-4 p-4 border-b ${rowDividerClass}`}>
-                <div className="space-y-1 text-left min-w-0">
-                    <div className="flex items-center gap-2 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                        <Sparkles size={15} className="opacity-70" aria-hidden="true" />
-                        {t('ui.aiTheme')}
-                    </div>
-                    <div className="text-xs opacity-50 max-w-[420px]" style={{ color: 'var(--text-secondary)' }}>
-                        {t('options.aiThemeDesc')}
-                    </div>
-                </div>
-                <div className={`flex rounded-xl border p-1 shrink-0 ${isDaylight ? 'bg-black/[0.05] border-black/10' : 'bg-white/5 border-white/5'}`}>
-                    {renderProviderOption('gemini', 'Google Gemini')}
-                    {renderProviderOption('openai', t('options.otherCompatibleApi'))}
-                </div>
-            </div>
-
-            <div className={`p-4 space-y-3 border-b ${rowDividerClass}`}>
-                {settings.provider === 'gemini' ? (
-                    <label className="block space-y-1 text-left">
-                        <span className="text-xs opacity-60" style={{ color: 'var(--text-secondary)' }}>
-                            {t('options.geminiApiKey')}
-                        </span>
-                        <input
-                            type="password"
-                            autoComplete="off"
-                            spellCheck={false}
-                            value={settings.geminiApiKey}
-                            onChange={(event) => update({ geminiApiKey: event.target.value })}
-                            placeholder="AIza..."
-                            className={fieldClass}
-                            style={{ color: 'var(--text-primary)' }}
-                        />
-                    </label>
-                ) : (
-                    <>
-                        <label className="block space-y-1 text-left">
-                            <span className="text-xs opacity-60" style={{ color: 'var(--text-secondary)' }}>
-                                {t('options.openaiApiUrl')}
-                            </span>
-                            <input
-                                type="text"
-                                autoComplete="off"
-                                spellCheck={false}
-                                value={settings.openaiApiUrl}
-                                onChange={(event) => update({ openaiApiUrl: event.target.value })}
-                                placeholder="https://api.openai.com/v1 or https://api.deepseek.com"
-                                className={fieldClass}
-                                style={{ color: 'var(--text-primary)' }}
-                            />
-                        </label>
-                        <label className="block space-y-1 text-left">
-                            <span className="text-xs opacity-60" style={{ color: 'var(--text-secondary)' }}>
-                                {t('options.openaiApiModel')}
-                            </span>
-                            <input
-                                type="text"
-                                autoComplete="off"
-                                spellCheck={false}
-                                value={settings.openaiApiModel}
-                                onChange={(event) => update({ openaiApiModel: event.target.value })}
-                                placeholder="gpt-5.6-luna / deepseek-v4-flash"
-                                className={fieldClass}
-                                style={{ color: 'var(--text-primary)' }}
-                            />
-                            <span className="block text-[10px] opacity-45" style={{ color: 'var(--text-secondary)' }}>
-                                {t('options.openaiApiModelDesc')}
-                            </span>
-                        </label>
-                        <label className="block space-y-1 text-left">
-                            <span className="text-xs opacity-60" style={{ color: 'var(--text-secondary)' }}>
-                                {t('options.openaiApiTemperature')}
-                            </span>
-                            <input
-                                type="number"
-                                min="0"
-                                max="2"
-                                step="0.1"
-                                value={settings.openaiApiTemperature}
-                                onChange={(event) => update({ openaiApiTemperature: event.target.value })}
-                                placeholder="0.7"
-                                className={fieldClass}
-                                style={{ color: 'var(--text-primary)' }}
-                            />
-                        </label>
-                        <label className="block space-y-1 text-left">
-                            <span className="text-xs opacity-60" style={{ color: 'var(--text-secondary)' }}>
-                                {t('options.openaiApiKey')}
-                            </span>
-                            <input
-                                type="password"
-                                autoComplete="off"
-                                spellCheck={false}
-                                value={settings.openaiApiKey}
-                                onChange={(event) => update({ openaiApiKey: event.target.value })}
-                                placeholder="sk-..."
-                                className={fieldClass}
-                                style={{ color: 'var(--text-primary)' }}
-                            />
-                        </label>
-                    </>
-                )}
-
-                <div className="flex flex-wrap items-center gap-3 text-left">
-                    <button
-                        type="button"
-                        onClick={() => void runTest()}
-                        disabled={testState === 'running'}
-                        className={ghostButtonClass}
-                        style={{ color: 'var(--text-primary)' }}
-                    >
-                        {testState === 'running'
-                            ? <Loader2 size={13} className="animate-spin" />
-                            : <Sparkles size={13} />}
-                        {testState === 'running' ? t('options.aiTestRunning') : t('options.aiTestConnection')}
-                    </button>
-                    {testState === 'done' && testResult && (
-                        <span className="inline-flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                            {testResult.ok
-                                ? <Check size={12} className="text-green-400" />
-                                : <X size={12} className="text-red-400" />}
-                            {testResult.ok
-                                ? `${t('options.aiTestSuccess')} · ${t('options.aiTestDuration')} ${testResult.durationMs} ms`
-                                    + `${testResult.model ? ` · ${t('options.aiTestModel')} ${testResult.model}` : ''}`
-                                : `${t('options.aiTestFailed')}${testResult.error ? `: ${testResult.error}` : ''}`}
-                        </span>
-                    )}
-                </div>
-                {testState === 'done' && testResult?.ok && testResult.reply && (
-                    <div className="text-[11px] opacity-55 break-words text-left" style={{ color: 'var(--text-secondary)' }}>
-                        {testResult.reply}
-                    </div>
-                )}
-
-                <div className="text-[10px] opacity-45 text-left" style={{ color: 'var(--text-secondary)' }}>
-                    {t('options.aiKeyStoredLocally')}
-                </div>
-            </div>
-        </div>
+    const inputClass = 'w-full min-h-11 rounded-lg border border-current/10 bg-current/5 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-current';
+    const field = (label: string, value: string, change: (value: string) => void, type = 'text') => (
+        <label className="block space-y-1 text-left"><span className="text-xs opacity-60">{label}</span>
+            <input type={type} value={value} onChange={event => change(event.target.value)} autoComplete="off" spellCheck={false} className={inputClass} /></label>
     );
+    const modelOptions = models.map(entry => ({ value: entry.id, label: entry.name === entry.id ? entry.id : entry.name + ' · ' + entry.id }));
+    if (model && !models.some(entry => entry.id === model)) modelOptions.unshift({ value: model, label: model });
+    return <div className={'rounded-xl border p-4 space-y-4 ' + settingsCardClass}>
+        <div className="flex items-center gap-2 text-sm font-medium"><Sparkles size={16} />{t('ui.aiTheme')}</div>
+        <CustomSelect ariaLabel={t('options.aiProvider')} value={settings.preset} isDaylight={isDaylight}
+            options={AI_PROVIDER_PRESETS.map(preset => ({ value: preset.id, label: preset.label || t('options.aiCustomProvider') }))}
+            onChange={id => {
+                const preset = AI_PROVIDER_PRESETS.find(entry => entry.id === id)!;
+                update({
+                    preset: id, provider: preset.protocol === 'gemini' ? 'gemini' : 'openai',
+                    apiProtocol: preset.protocol === 'anthropic' ? 'anthropic' : 'openai',
+                    openaiApiUrl: id === 'custom' ? settings.openaiApiUrl : preset.baseUrl,
+                    openaiApiModel: settings.preset === id ? settings.openaiApiModel : '',
+                });
+            }} />
+        {settings.preset === 'custom' && field(t('options.openaiApiUrl'), settings.openaiApiUrl, value => update({ openaiApiUrl: value }))}
+        {field(gemini ? t('options.geminiApiKey') : t('options.openaiApiKey'), key, value => update(gemini ? { geminiApiKey: value } : { openaiApiKey: value }), 'password')}
+        <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3 text-xs">
+                <span>{t('options.aiModel')}</span>
+                <button type="button" disabled={loading || !key.trim()} onClick={() => void discover()} className="flex min-h-11 items-center gap-2 rounded-lg px-3 disabled:opacity-40">
+                    {loading ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}{t('options.aiRefreshModels')}
+                </button>
+            </div>
+            {!manual && models.length > 0
+                ? <CustomSelect ariaLabel={t('options.aiModel')} value={model} options={modelOptions} onChange={chooseModel} isDaylight={isDaylight} />
+                : field(t('options.aiModel'), model, chooseModel)}
+            {models.length > 0 && <button type="button" className="min-h-11 text-xs underline opacity-70" onClick={() => setManual(value => !value)}>{t(manual ? 'options.aiChooseModel' : 'options.aiManualModel')}</button>}
+            {modelError && <p role="status" className="text-xs opacity-60">{t('options.aiModelsUnavailable')}</p>}
+        </div>
+        {!gemini && field(t('options.openaiApiTemperature'), settings.openaiApiTemperature, value => update({ openaiApiTemperature: value }, false), 'number')}
+        <div className="flex flex-wrap items-center gap-3">
+            <button type="button" disabled={testing || !key.trim() || (settings.apiProtocol === 'anthropic' && !model.trim())} onClick={() => void runTest()} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-current/5 px-4 text-xs disabled:opacity-40">
+                {testing ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}{t(testing ? 'options.aiTestRunning' : 'options.aiTestConnection')}
+            </button>
+            {testResult && <span role="status" className="inline-flex items-center gap-2 text-xs">
+                {testResult.ok ? <Check size={15} /> : <X size={15} />}{t(testResult.ok ? 'options.aiTestSuccess' : 'options.aiTestFailed')}
+                {testResult.ok && ' · ' + testResult.durationMs + ' ms'}
+            </span>}
+        </div>
+    </div>;
 };
-
 export default AiProviderSettings;

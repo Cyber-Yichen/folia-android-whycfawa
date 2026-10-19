@@ -1,4 +1,8 @@
+import { PlayerState } from '../../../types';
+import { isAndroidNativeRuntime } from '../../../utils/platform';
 import { useMemo } from 'react';
+import { useNowPlayingCardPositioningEntry } from './now-playing-toast/useNowPlayingCardPositioningEntry';
+import { useNowPlayingCardLayoutStore } from './now-playing-toast/nowPlayingCardLayoutStore';
 import { currentTime, lyricCurrentTime } from '../../../stores/motionSignals';
 import { useAppViewStore } from '../../../stores/useAppViewStore';
 import { useAppChromeStore } from '../../../stores/useAppChromeStore';
@@ -35,9 +39,12 @@ const MEMORY_MONITOR_SHORTCUT_LABEL = 'Alt+Shift+M';
  */
 export const useAppOverlaysModel = (deps: AppOverlaysDeps): AppOverlaysModel => {
     const { t } = useTranslation();
+    useNowPlayingCardPositioningEntry(deps.navigateToPlayer);
+    const cardPositioning = useNowPlayingCardLayoutStore(state => state.isPositioning);
     const currentView = useAppViewStore(state => state.view);
     const isPlayerChromeHidden = useAppChromeStore(state => state.isPlayerChromeHidden);
     const immersiveModeEnabled = useAndroidLayoutSettingsStore(state => state.immersiveModeEnabled);
+    const immersiveHideTransport = useAndroidLayoutSettingsStore(state => state.immersiveHideTransport);
     const autoHidePlayerChrome = usePlayerChromeSettingsStore(state => state.autoHidePlayerChrome);
     const immersiveChromeHidden = useImmersiveChromeStore(state => state.immersiveChromeHidden);
     const isDevDebugOverlayVisible = useAppChromeStore(state => state.isDevDebugOverlayVisible);
@@ -89,16 +96,19 @@ export const useAppOverlaysModel = (deps: AppOverlaysDeps): AppOverlaysModel => 
     // 原有自动隐藏开着时由它自行接管唤回，本钩子只负责“进入先收起”。
     useImmersiveChromeReveal({
         immersiveEnabled: immersiveModeEnabled,
-        isPlayerView: currentView === 'player',
+        isPlayerView: currentView === 'player' || currentView === 'lattice',
+        isPlaying: displayPlayerState === PlayerState.PLAYING && !cardPositioning,
         autoHidePlayerChrome,
     });
 
     // 全沉浸模式只在播放视图生效：强制收起控制条、命令面板按钮与右侧齿轮/面板按钮。
     // 歌单、歌曲浏览等界面保持原样，不会因为全沉浸而少掉浏览控件。
     const immersivePlayerChromeHidden = immersiveModeEnabled
-        && currentView === 'player'
+        && (currentView === 'player' || currentView === 'lattice')
         && immersiveChromeHidden;
-    const effectivePlayerChromeHidden = isPlayerChromeHidden || immersivePlayerChromeHidden;
+    const effectivePlayerChromeHidden = isAndroidNativeRuntime()
+        ? immersivePlayerChromeHidden && immersiveHideTransport
+        : isPlayerChromeHidden || immersivePlayerChromeHidden;
 
     return useMemo(() => buildAppOverlaysModel({
         ...deps,
@@ -121,7 +131,8 @@ export const useAppOverlaysModel = (deps: AppOverlaysDeps): AppOverlaysModel => 
         playQueue,
         isFmMode,
         coverUrl: displayCoverUrl,
-        stageTrackPillMode,
+        stageTrackPillMode: cardPositioning ? 'always' : stageTrackPillMode,
+        stageTrackPillOnScreen: deps.stageTrackPillOnScreen || (cardPositioning && currentView === 'player'),
         stageTrackPillTimeoutSec,
         noTrackText: t('ui.noTrack'),
         prevTrackLabel: t('ui.previousTrack'),
@@ -139,6 +150,7 @@ export const useAppOverlaysModel = (deps: AppOverlaysDeps): AppOverlaysModel => 
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }), [
         ...Object.values(deps),
+        cardPositioning,
         currentView,
         isSearchOpen,
         isDaylight,
@@ -152,6 +164,7 @@ export const useAppOverlaysModel = (deps: AppOverlaysDeps): AppOverlaysModel => 
         activePlaybackContext,
         autoHidePlayerChrome,
         immersiveChromeHidden,
+        immersiveHideTransport,
         effectivePlayerChromeHidden,
         immersivePlayerChromeHidden,
         playQueue,

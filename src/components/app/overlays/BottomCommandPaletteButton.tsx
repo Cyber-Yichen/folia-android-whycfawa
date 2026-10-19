@@ -26,7 +26,7 @@ const BottomCommandPaletteButton: React.FC = () => {
     const currentView = useAppViewStore(state => state.view);
     // 全沉浸只在播放视图收起这颗按钮；歌单、歌曲浏览界面照旧显示。触摸唤回时
     // immersiveChromeHidden 变为 false，这颗按钮也一起回来。
-    const immersiveActiveHere = immersiveModeEnabled && currentView === 'player' && immersiveChromeHidden;
+    const immersiveActiveHere = immersiveModeEnabled && (currentView === 'player' || currentView === 'lattice') && immersiveChromeHidden;
     const paletteOpen = useAppViewStore(state => state.isCommandFilterOpen);
     const [visible, setVisible] = useState(true);
 

@@ -4,6 +4,7 @@
 //
 // Split out of useSettingsUiStore.
 
+import { isAndroidNativeRuntime } from '../utils/platform';
 import { create } from 'zustand';
 import i18n from '../i18n/config';
 import {
@@ -144,7 +145,7 @@ export const usePlayerChromeSettingsStore = create<PlayerChromeSettingsState>((s
     transparentPlayerBackground: getStoredBoolean('transparent_player_background', false),
     enablePlayerPageNativeBlur: getStoredBoolean('enable_player_page_native_blur', false),
     autoHidePlayerChrome: getStoredBoolean('auto_hide_player_chrome', false),
-    hideCommandPaletteButton: getStoredBoolean(HIDE_COMMAND_PALETTE_BUTTON_KEY, false),
+    hideCommandPaletteButton: getStoredBoolean(HIDE_COMMAND_PALETTE_BUTTON_KEY, isAndroidNativeRuntime()),
     autoHideCommandPaletteButton: getStoredBoolean('auto_hide_command_palette_button', false),
     // Rides the chrome auto-hide clock rather than owning one: the cursor goes away with the
     // controls it would have clicked. Opt-out, so auto-hide can keep the pointer if wanted.

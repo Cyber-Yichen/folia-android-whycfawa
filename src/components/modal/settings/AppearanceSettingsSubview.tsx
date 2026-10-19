@@ -1,3 +1,4 @@
+import { applyPlaybackAppearanceConfig } from '../../../services/playbackAppearanceConfig';
 import { useAndroidPerformanceStore } from '../../../stores/useAndroidPerformanceStore';
 import AiProviderSettings from './AiProviderSettings';
 import { isAndroidNativeRuntime } from '../../../utils/platform';
@@ -219,6 +220,7 @@ const AppearanceSettingsSubview: React.FC<AppearanceSettingsSubviewProps> = ({
     const storeVisualizer = useVisualizerSettingsStore(useShallow(state => ({
         visualizerMode: state.visualizerMode,
         randomVisualizerModePerSong: state.randomVisualizerModePerSong,
+        randomVisualizerModes: state.randomVisualizerModes,
         visualizerBackgroundMode: state.visualizerBackgroundMode,
         backgroundOpacity: state.backgroundOpacity,
         visualizerOpacity: state.visualizerOpacity,
@@ -418,12 +420,7 @@ const AppearanceSettingsSubview: React.FC<AppearanceSettingsSubviewProps> = ({
             }
 
             // 2. Restore Visualizer Setup
-            if (has('visualizerMode') && config.visualizerMode) {
-                storeVisualizer.handleSetVisualizerMode(config.visualizerMode);
-            }
-            if (has('randomVisualizerModePerSong')) {
-                storeVisualizer.handleToggleRandomVisualizerModePerSong(Boolean(config.randomVisualizerModePerSong));
-            }
+            applyPlaybackAppearanceConfig(config, Object.keys(config).filter(has));
             if (has('visualizerOpacity')) {
                 storeVisualizer.handleSetVisualizerOpacity(config.visualizerOpacity);
             }

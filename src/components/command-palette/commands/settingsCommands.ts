@@ -1,3 +1,4 @@
+import { androidLayoutCommands } from './androidLayoutCommands';
 import { isAndroidNativeRuntime } from '../../../utils/platform';
 import { syncNow } from '../../../services/sync/syncCoordinator';
 import { isSyncConfigured } from '../../../services/sync/syncConfig';
@@ -5,6 +6,7 @@ import { buildObsCustomCss } from '../../../services/obs/obsCustomCss';
 import { hasUploadedObsAsset } from '../../../services/obs/visualSettingsConfig';
 import type { CommandPaletteCommand } from '../types';
 import { createToggleCommand, createAppLanguageCommand, createSettingsCommand, createSettingsAnchorCommand, defineCommand } from '../commandFactories';
+import { nowPlayingCardPositionCommand } from './nowPlayingCardPositionCommand';
 import { sleepTimerCommand } from './sleepTimerCommand';
 import { lyricExportCommands } from './lyricExportCommands';
 import { Gauge, Images, Layers3, Library } from 'lucide-react';
@@ -19,6 +21,7 @@ import { openCurrentPagePonder } from '../../../services/ponder/pagePonderTarget
 // Commands in the `settings` group: settings subviews, app toggles, theme, sync, and desktop-only switches.
 
 export const settingsCommands: CommandPaletteCommand[] = [
+    ...androidLayoutCommands,
     createToggleCommand('android-performance-toggle', 'settings', 'Android performance mode', 'Switch between lighter rendering and full quality',
         ['render quality', 'gpu load', '安卓性能', '低功耗', '流畅度'], context => context.settings.toggleAndroidPerformance(),
         { platform: ['web'], isAvailable: isAndroidNativeRuntime }),
@@ -41,6 +44,7 @@ export const settingsCommands: CommandPaletteCommand[] = [
         },
     },
     sleepTimerCommand,
+    nowPlayingCardPositionCommand,
     createSettingsCommand('settings-options', 'Open Options', 'Open the options center', ['settings', 'options', '设置', '选项'], 'options', null, { executeShortcut: 'o' }),
     createSettingsCommand('settings-appearance', 'Appearance settings', 'Open visual and appearance settings', ['appearance', 'visual settings', '外观', '视觉'], 'options', 'appearance'),
     createSettingsAnchorCommand('settings-theme-presets', 'Theme presets', 'Jump to the built-in and saved theme presets', ['preset theme', 'color preset', '预设主题'], 'themePresets'),

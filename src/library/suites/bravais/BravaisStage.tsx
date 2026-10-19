@@ -1,3 +1,4 @@
+import { useTouchWallCenterFocus } from '../../../components/wall/useTouchWallCenterFocus';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, type CSSProperties, type MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { collectWallSlots, type WallSlot } from '../../../components/wall/wallSlots';
@@ -120,6 +121,7 @@ const BravaisStage: React.FC<LibrarySuiteStageProps> = ({
     const navigation = handoff.role === 'out' ? frozenNavigationRef.current : hostNavigation;
     const rootRef = useRef<HTMLElement>(null);
     const fieldRef = useRef<HTMLDivElement>(null);
+    useTouchWallCenterFocus(fieldRef);
     const leftRef = useRef<HTMLDivElement>(null);
     const rightRef = useRef<HTMLDivElement>(null);
     const seamRef = useRef<HTMLDivElement>(null);

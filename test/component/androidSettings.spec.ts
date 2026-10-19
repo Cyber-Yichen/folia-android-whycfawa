@@ -12,12 +12,14 @@ test('Android preferences change live and survive reload', async ({ page }) => {
     await page.goto('/dev-probe.html?probe=androidPerformanceSettings');
     const mode = page.getByRole('button', { name: 'Android performance mode', exact: true });
     await expect(mode).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByRole('button', { name: 'Command palette', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Command palette', exact: true })).toHaveCount(0);
     await mode.click();
     await expect(page.locator('html')).toHaveAttribute('data-folia-android-performance', 'false');
-    const hide = page.getByRole('button', { name: 'Hide command button', exact: true });
+    const hide = page.getByRole('button', { name: 'Show command button', exact: true });
+    await expect(hide).toHaveAttribute('aria-pressed', 'false');
     await hide.click();
-    await expect(page.getByRole('button', { name: 'Command palette', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Command palette', exact: true })).toBeVisible();
+    await hide.click();
     const limit = page.getByRole('combobox', { name: 'Cache size limit' });
     await limit.click();
     await page.getByRole('option', { name: '0.5 GB', exact: true }).click();
@@ -37,7 +39,7 @@ test('Android preferences change live and survive reload', async ({ page }) => {
     }, values);
     await page.reload();
     await expect(mode).toHaveAttribute('aria-pressed', 'false');
-    await expect(hide).toHaveAttribute('aria-pressed', 'true');
+    await expect(hide).toHaveAttribute('aria-pressed', 'false');
     await expect(limit).toContainText('0.5 GB');
     await mode.click();
     await hide.click();

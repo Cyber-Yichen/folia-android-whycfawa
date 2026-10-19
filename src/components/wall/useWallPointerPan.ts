@@ -1,5 +1,7 @@
 // src/components/wall/useWallPointerPan.ts
 
+import { isAndroidNativeRuntime } from '../../utils/platform';
+import { useWallTouchGestures } from './useWallTouchGestures';
 import { animate } from 'framer-motion';
 import { useCallback, useEffect, useRef, type MutableRefObject, type PointerEvent, type MouseEvent, type RefObject } from 'react';
 import type { Bounds } from './layout';
@@ -28,6 +30,7 @@ type WallPointerPanOptions = {
      * 宿主要不要钳制相机（比如有限拼贴的边界、性能优先时的行程上限）。拖动 / 滚轮 / 惯性都过这一道，
      * 键盘与播放跟随的补间不走这里 —— 它们要能把任意一张卡带到眼前。
      */
+    onZoomEnd?: (scale: number) => void;
     clampCamera?: (camera: LatticeCamera) => LatticeCamera;
     bounds: Bounds;
     cameraRef: MutableRefObject<LatticeCamera>;
@@ -37,7 +40,7 @@ type WallPointerPanOptions = {
 
 export const useWallPointerPan = ({
     applyCamera, animationRef, stopPan, containerRef, reducedMotion, overscan, clampCamera,
-    bounds, cameraRef, getWorldBounds, viewportRef,
+    bounds, cameraRef, getWorldBounds, viewportRef, onZoomEnd,
 }: WallPointerPanOptions) => {
     const boundsRef = useRef(bounds);
     boundsRef.current = bounds;
@@ -57,8 +60,8 @@ export const useWallPointerPan = ({
     const didDragRef = useRef(false);
 
     // Republishing bounds is what triggers a re-cull, so only do it near the edge of what is culled.
-    const updateCamera = useCallback((x: number, y: number) => {
-        const requested = { ...cameraRef.current, x, y };
+    const updateCamera = useCallback((x: number, y: number, scale = cameraRef.current.scale) => {
+        const requested = { x, y, scale };
         const next = clampCameraRef.current ? clampCameraRef.current(requested) : requested;
         const visible = getWorldBounds(next, viewportRef.current);
         const culled = boundsRef.current;
@@ -277,5 +280,14 @@ export const useWallPointerPan = ({
         };
     }, [animationRef, cameraRef, containerRef, interrupt, reducedMotion, stopPan, updateCamera, viewportRef]);
 
-    return { didDragRef, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onClickCapture };
+    const touch = useWallTouchGestures({ cameraRef, animationRef, didDragRef, stopPan, updateCamera, reducedMotion, onZoomEnd });
+    const nativeTouch = (event: PointerEvent<HTMLDivElement>) => isAndroidNativeRuntime() && event.pointerType === 'touch';
+    return {
+        didDragRef, onClickCapture,
+        hasActivePointers: () => Boolean(pointerRef.current) || touch.hasActivePointers(),
+        onPointerDown: (event: PointerEvent<HTMLDivElement>) => nativeTouch(event) ? touch.onPointerDown(event) : onPointerDown(event),
+        onPointerMove: (event: PointerEvent<HTMLDivElement>) => nativeTouch(event) ? touch.onPointerMove(event) : onPointerMove(event),
+        onPointerUp: (event: PointerEvent<HTMLDivElement>) => nativeTouch(event) ? touch.onPointerUp(event) : onPointerUp(event),
+        onPointerCancel: (event: PointerEvent<HTMLDivElement>) => nativeTouch(event) ? touch.onPointerCancel(event) : onPointerCancel(event),
+    };
 };

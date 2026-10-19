@@ -3,7 +3,8 @@ import { buildSegmentationManualPrompt } from '../../shared/lyricSegmentationPro
 // @ts-ignore -- 共享的纯 ESM 模块，无类型声明。
 import { segmentLyricLines } from '../../shared/lyricSegmentationService.mjs';
 import { buildAiEnv } from './aiSettings';
-import { createAiFetch, isAiBridgeFetchAvailable } from './aiNativeFetch';
+import { isAiBridgeFetchAvailable } from './aiNativeFetch';
+import { createAiCompletionFetch } from './ai/aiCompletionFetch';
 
 // src/services/lyricSegmentationAi.ts
 // Renderer-side entry to lyric word segmentation, mirroring the Electron/web split in gemini.ts:
@@ -71,7 +72,7 @@ const segmentBatch = async (lines: string[], signal?: AbortSignal): Promise<(str
 
     // 安卓容器：用本机配置的 Key 直连模型，请求经原生桥转发。
     if (isAiBridgeFetchAvailable()) {
-        const boundaries = await segmentLyricLines(lines, buildAiEnv(), createAiFetch());
+        const boundaries = await segmentLyricLines(lines, buildAiEnv(), createAiCompletionFetch());
         return assertBoundaries(boundaries, lines);
     }
 

@@ -109,7 +109,7 @@ const BravaisSeam: React.FC<BravaisSeamProps> = ({
             <button
                 ref={tabRef}
                 type="button"
-                className="bravais-seam-tab"
+                className={currentLayer?.seam.home ? 'bravais-seam-tab is-home-tab' : 'bravais-seam-tab'}
                 data-bravais-seam-tab={level === 'hidden' ? 'hidden' : 'collapsed'}
                 style={{ display: 'none' }}
                 onClick={onTab}

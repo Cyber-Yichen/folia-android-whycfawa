@@ -1,3 +1,8 @@
+import { useImmersiveChromeStore } from '../stores/useImmersiveChromeStore';
+import TouchPlayerBar from './floating-player/TouchPlayerBar';
+import { useTouchPlayerDisclosure } from './floating-player/useTouchPlayerDisclosure';
+import { useMediaQuery } from '../hooks/useMediaQuery';
+import { isAndroidNativeRuntime } from '../utils/platform';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -54,7 +59,9 @@ export type SlotContextFromApp = Omit<
     'loopMode' | 'onToggleLoop' | 'onToggleTimeline' | 'hasLyrics' | 'canPrev' | 'canNext' | 'onPrev' | 'onNext'
 >;
 
-interface FloatingPlayerControlsProps {
+export interface FloatingPlayerControlsProps {
+    artistName?: string;
+    coverUrl?: string | null;
     currentSong: { name: string; } | null;
     playerState: PlayerState;
     currentTime: MotionValue<number>;
@@ -91,6 +98,8 @@ interface FloatingPlayerControlsProps {
 
 const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
     currentSong,
+    artistName,
+    coverUrl,
     playerState,
     currentTime,
     lyricCurrentTime,
@@ -135,8 +144,9 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
     // Touch devices have no hover, so the capsule needs its own expanded state:
     // without it the play/pause and prev/next buttons can never be reached on a
     // tablet. Touching the bar expands it; touching elsewhere collapses it.
-    const [isTouchExpanded, setIsTouchExpanded] = useState(false);
     const [isTimelineOpen, setIsTimelineOpen] = useState(false);
+    const coarsePointer = useMediaQuery('(hover: none) and (pointer: coarse)');
+    const touchControls = isAndroidNativeRuntime() || coarsePointer;
     const expandTimeoutRef = useRef<number | null>(null);
     const collapseTimeoutRef = useRef<number | null>(null);
 
@@ -152,12 +162,17 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
             : resolvePlayerBottomBarMaxOffset(window.innerHeight)
     ));
 
+    const disclosure = useTouchPlayerDisclosure(touchControls, isPositioning || isTimelineOpen);
     const canAutoExpand = canTogglePlay && duration > 0;
     // 定位模式强制展开：用户要看到的是最终形态的胶囊，而不是一条细进度条。
     const showExpanded = isPositioning
-        || isHovered
-        || isTouchExpanded
-        || (canAutoExpand && playerState !== PlayerState.PLAYING && currentView !== 'home');
+        || (touchControls ? disclosure.expanded : isHovered
+            || (canAutoExpand && playerState !== PlayerState.PLAYING && currentView !== 'home'));
+
+    useEffect(() => {
+        useImmersiveChromeStore.getState().setPlayerBarExpanded(touchControls && showExpanded);
+        return () => useImmersiveChromeStore.getState().setPlayerBarExpanded(false);
+    }, [showExpanded, touchControls]);
 
     // 上限依赖视口高度，窗口变矮时要跟着收，否则虚线框会画到屏幕外。
     useEffect(() => {
@@ -173,9 +188,6 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
 
     const handlePositionDragStart = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
         // 触摸没有 hover，按下就展开，展开后这一次点击仍然落在同一颗胶囊上。
-        if (e.pointerType === 'touch') {
-            setIsTouchExpanded(true);
-        }
         if (!isPositioning) {
             return;
         }
@@ -283,20 +295,8 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
         };
     }, []);
 
-    // 触摸展开后不会收到 mouseleave，改为点到别处时收起。
-    useEffect(() => {
-        if (!isTouchExpanded) return undefined;
-        const handlePointerDownOutside = (event: PointerEvent) => {
-            if (event.pointerType !== 'touch') return;
-            const target = event.target as Element | null;
-            if (target?.closest?.('[data-ponder="player-bar"]')) return;
-            setIsTouchExpanded(false);
-        };
-        window.addEventListener('pointerdown', handlePointerDownOutside, true);
-        return () => window.removeEventListener('pointerdown', handlePointerDownOutside, true);
-    }, [isTouchExpanded]);
-
     const handleMouseEnter = () => {
+        if (touchControls) return;
         if (collapseTimeoutRef.current !== null) {
             window.clearTimeout(collapseTimeoutRef.current);
             collapseTimeoutRef.current = null;
@@ -313,6 +313,7 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
     };
 
     const handleMouseLeave = () => {
+        if (touchControls) return;
         if (expandTimeoutRef.current !== null) {
             window.clearTimeout(expandTimeoutRef.current);
             expandTimeoutRef.current = null;
@@ -328,7 +329,11 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
         }, HOVER_COLLAPSE_DELAY_MS);
     };
 
-    const handleClick = () => {
+    const handleClick = (event: React.MouseEvent) => {
+        if (touchControls) {
+            if (!(event.target as Element).closest('button, input, a, [role="slider"]')) disclosure.expand();
+            return;
+        }
         if (isPositioning) {
             return;
         }
@@ -353,7 +358,7 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
                 所以挂在这一层不会干扰居中。
             */}
             <motion.div
-                className={`absolute left-1/2 -translate-x-1/2 z-60 w-full flex justify-center pointer-events-none
+                className={`${touchControls ? 'folia-touch-player-host' : ''} absolute left-1/2 -translate-x-1/2 z-60 w-full flex justify-center pointer-events-none
                     ${currentView === 'home'
                         ? 'max-w-[calc(100vw-120px)] md:max-w-[min(calc(32rem_+_var(--folium-player-bar-extra,0px)),calc(100vw-120px))]'
                         : 'max-w-[min(calc(32rem_+_var(--folium-player-bar-extra,0px)),100vw)] px-4'}`}
@@ -368,6 +373,7 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
                     scale: isHidden ? 0.97 : 1,
                 }}
                 transition={{ duration: 0.26, ease: 'easeOut' }}
+                data-folia-player-chrome="true" aria-hidden={isHidden || undefined} inert={isHidden}
                 style={{ pointerEvents: isHidden ? 'none' : 'auto' }}
                 onClick={(e) => e.stopPropagation()}
             >
@@ -389,6 +395,8 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
                         // 用原生 pointer 事件而不是 framer-motion 的 drag：位移已经由 playerBottomBarLiveOffset
                         // 经外层 lift 表达，再让 drag 往这个节点写一份 y 会叠加成两倍位移；
                         // 而且 dragConstraints 依赖的起始值放在 ref 里不会触发重渲染，读到的会是上一帧的。
+                        ref={disclosure.rootRef}
+                        data-folia-player-bar-touch={touchControls || undefined}
                         data-ponder="player-bar"
                         data-folia-player-bar-expanded={showExpanded ? 'true' : 'false'}
                         onPointerDown={handlePositionDragStart}
@@ -398,7 +406,7 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
                         // `manipulation` drops the legacy tap delay and the double-tap zoom on
                         // touch screens; only the positioning drag needs to swallow gestures.
                         style={{ touchAction: isPositioning ? 'none' : 'manipulation' }}
-                        className={`backdrop-blur-xl shadow-2xl overflow-hidden rounded-full relative transition-colors duration-300
+                        className={`${touchControls ? 'folia-touch-player-capsule' : ''} backdrop-blur-xl shadow-2xl overflow-hidden rounded-full relative transition-colors duration-300
                             ${isPositioning ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}
                             ${showExpanded ? `p-3 ${glassBgExpanded} w-full` : `px-4 py-2 ${glassBgCollapsed} ${COLLAPSED_WIDTH_CLASS}`}`}
                     >
@@ -408,7 +416,16 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
                             // 定位模式下 seek 和所有按钮一起失效：这时胶囊是个被拖的物体，不是控件。
                             className={`w-full ${isPositioning ? 'pointer-events-none select-none' : ''}`}
                         >
-                            {showExpanded ? (
+                            {touchControls ? <TouchPlayerBar
+                                currentSong={currentSong} artistName={artistName} coverUrl={coverUrl}
+                                playerState={playerState} currentTime={currentTime} duration={duration}
+                                onSeek={onSeek} onSeekStart={disclosure.seekStart} onSeekEnd={disclosure.seekEnd}
+                                canTogglePlay={canTogglePlay} onTogglePlay={onTogglePlay}
+                                controlsDisabled={controlsDisabled || isPositioning} trackNavigation={trackNavigation}
+                                slotPrimary={slotPrimary} slotSecondary={slotSecondary} slotContext={resolvedSlotContext}
+                                primaryColor={primaryColor} secondaryColor={secondaryColor} isDaylight={isDaylight}
+                                expanded={showExpanded} onExpand={disclosure.expand} onCollapse={disclosure.collapse}
+                            /> : showExpanded ? (
                                 <ExpandedView
                                     currentSong={currentSong}
                                     playerState={playerState}

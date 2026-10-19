@@ -1,3 +1,5 @@
+import RandomPoolGroup from './random/RandomPoolGroup';
+import { useVisualizerSettingsStore } from '../../stores/useVisualizerSettingsStore';
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CaptionsOff, Focus, Monitor, PanelTop, RotateCcw, type LucideIcon } from 'lucide-react';
 import {
@@ -323,6 +325,7 @@ const SectionTabs: React.FC<Pick<VisPlaygroundSettingsPanelProps, 'activeSection
 );
 
 const VisPlaygroundSettingsPanel: React.FC<VisPlaygroundSettingsPanelProps> = (props) => {
+    const randomEnabled = useVisualizerSettingsStore(state => state.randomVisualizerModePerSong);
     const {
         activeSection,
         onSectionChange,
@@ -467,7 +470,7 @@ const VisPlaygroundSettingsPanel: React.FC<VisPlaygroundSettingsPanelProps> = (p
         <div className="min-h-0 min-w-0 flex flex-col gap-3 overflow-hidden">
             <div className="flex shrink-0 min-w-0 items-center gap-2">
                 <SectionTabs activeSection={activeSection} onSectionChange={onSectionChange} t={t} theme={theme} />
-                {activeSection === 'visualizer' && visualizerEntry.resetSettings && (
+                {activeSection === 'visualizer' && !randomEnabled && visualizerEntry.resetSettings && (
                     <div className="shrink-0"><ResetSectionButton compact label={t('ui.default')} onClick={onResetVisualizerTuning} theme={theme} /></div>
                 )}
             </div>
@@ -683,7 +686,8 @@ const VisPlaygroundSettingsPanel: React.FC<VisPlaygroundSettingsPanelProps> = (p
                     </>
                 )}
 
-                {activeSection === 'visualizer' && (
+                {activeSection === 'visualizer' && randomEnabled && <RandomPoolGroup />}
+                {activeSection === 'visualizer' && !randomEnabled && (
                     <>
                         {renderMissingFoliumHint('visualizer')}
 

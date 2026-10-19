@@ -1,3 +1,4 @@
+import { isAndroidNativeRuntime } from '../../utils/platform';
 import type { CommandPaletteContext, CommandScope } from './types';
 
 // src/components/command-palette/availability.ts
@@ -6,7 +7,7 @@ import type { CommandPaletteContext, CommandScope } from './types';
 
 // 'electron' matches any desktop build; the OS names imply desktop; 'web' means a browser
 // without the Electron bridge.
-export type CommandPlatform = 'web' | 'electron' | 'win' | 'mac' | 'linux';
+export type CommandPlatform = 'android' | 'web' | 'electron' | 'win' | 'mac' | 'linux';
 
 const OS_BY_NODE_PLATFORM: Record<string, Extract<CommandPlatform, 'win' | 'mac' | 'linux'>> = {
     win32: 'win',
@@ -28,7 +29,7 @@ const detectRuntimePlatform = (): RuntimePlatform | null => {
 
     const electron = (window as any).electron;
     if (!electron) {
-        return { isElectron: false, os: 'web' };
+        return { isElectron: false, os: isAndroidNativeRuntime() ? 'android' : 'web' };
     }
 
     return { isElectron: true, os: OS_BY_NODE_PLATFORM[String(electron.platform)] ?? null };
@@ -47,6 +48,7 @@ export const matchesCommandPlatform = (platform?: CommandPlatform[]): boolean =>
     }
 
     return platform.some(candidate => {
+        if (candidate === 'android') return runtime.os === 'android';
         if (candidate === 'web') {
             return !runtime.isElectron;
         }

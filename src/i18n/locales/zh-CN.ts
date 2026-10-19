@@ -597,6 +597,8 @@ export default {
       }
     },
     "commands": {
+      "android-immersive-toggle": {"title": "沉浸式播放", "description": "自动隐藏播放界面按钮"},
+      "android-immersive-transport-toggle": {"title": "自动隐藏播放栏", "description": "播放栏一起参与沉浸式自动隐藏"},
       "android-performance-toggle": {"title": "安卓性能模式", "description": "切换轻量渲染和完整画质"},
       "command-button-hide-toggle": {"title": "隐藏命令按钮", "description": "显示或隐藏左下角命令按钮"},
       "settings-ai-provider": {"title": "AI 主题 API", "description": "配置 AI 主题服务"},
@@ -616,6 +618,7 @@ export default {
       "settings-help": { "title": "打开帮助", "description": "打开帮助和快捷键" },
       "ponder-current-page": { "title": "思索当前页面", "description": "打开当前页面的交互式介绍" },
       "settings-options": { "title": "打开选项", "description": "打开设置中心" },
+      "settings-now-playing-card-position": { "title": "调整卡片位置", "description": "拖动正在播放卡片到新的位置" },
       "settings-appearance": { "title": "外观设置", "description": "打开视觉和外观设置" },
       "settings-general": { "title": "界面设置", "description": "打开全局应用偏好" },
       "settings-playback": { "title": "播放设置", "description": "打开播放行为设置" },
@@ -844,6 +847,7 @@ export default {
     }
   },
   "ui": {
+    "visualizerRandom": "随机",
     "back": "返回",
     "noTrack": "无音轨",
     "selectPlaceholder": "请选择...",
@@ -1610,6 +1614,37 @@ export default {
     "lyricMatchPriorityDesc": "在多个歌词源都存在高置信度匹配时，优先选择该歌词源的结果。"
   },
   "options": {
+    "stageTrackPillResetPosition": "恢复默认位置",
+    "aiModel": "模型",
+    "aiModelsUnavailable": "无法获取模型列表，请手动输入模型名称。",
+    "aiChooseModel": "选择模型",
+    "aiManualModel": "手动输入模型",
+    "aiRefreshModels": "获取模型",
+    "aiCustomProvider": "自定义",
+    "stageTrackPillPositioningHint": "拖动卡片调整位置。",
+    "stageTrackPillReposition": "调整卡片位置",
+    "randomPoolChoose": "选择随机池",
+    "randomPoolDesc": "每首歌从选中的样式里换一种，各样式用自己保存的参数。",
+    "randomPoolCount": "已选 {{selected}}/{{total}}",
+    "randomPool": "随机池",
+    "randomVisualizerReroll": "从随机池里换一种",
+    "randomVisualizerAtLeastOne": "至少选择一种样式",
+    "randomVisualizerCurrentStyle": "当前样式",
+    "randomVisualizerSelectAll": "全选",
+    "randomVisualizerModes": "参与随机的样式",
+    "customCacheLimit": "自定义",
+    "applyCacheLimit": "应用",
+
+    "immersiveHideTransport": "同时自动隐藏播放栏",
+
+    "playerControlsExpand": "展开播放栏",
+    "playerControlsCollapse": "收起播放栏",
+    "playerControlsPrevious": "上一首",
+    "playerControlsNext": "下一首",
+
+    "showCommandPaletteButton": "显示命令按钮",
+    "androidPerformanceSeamClearDisabled": "性能模式下不可用",
+
     "androidPerformanceMode": "安卓性能模式",
     "androidPerformanceModeDesc": "降低动画画质和背景模糊，提升流畅度。",
     "hideCommandPaletteButton": "隐藏命令按钮",
@@ -1805,7 +1840,7 @@ export default {
    "bottomUiSettings": "底部界面",
    "adaptiveDisplay": "自适应屏幕分辨率",
    "immersiveMode": "全沉浸模式",
-   "immersiveModeDesc": "只在播放界面生效：自动收起控制条、即将播放卡片、命令面板按钮和右侧齿轮/面板按钮，让画面更干净。浏览歌单和歌曲的界面不受影响。关闭后命令面板按钮恢复显示；若“自动隐藏命令面板按钮”本来就是打开的，则继续保持自动隐藏。",
+   "immersiveModeDesc": "播放栏收起 10 秒后隐藏界面按钮，轻触画面即可再次显示。",
    "phoneFit": "手机适配",
    "keepScreenOn": "屏幕常亮",
    "keepScreenOnDesc": "打开后不再自动息屏，看歌词、抄歌词或放在桌上时屏幕保持点亮。关掉就恢复系统的自动息屏。",
@@ -2036,7 +2071,7 @@ export default {
     "autoHideCursorWithPlayerChrome": "同时隐藏鼠标指针",
     "autoHideCursorWithPlayerChromeDesc": "控制栏收起后鼠标指针一起消失，移动鼠标即可唤回。关闭后只隐藏控制栏，保留指针。",
     "stageTrackPill": "歌曲信息卡片",
-    "stageTrackPillDesc": "播放器和播放队列左下角的正在播放卡片：显示一段时间后自动隐藏，或保持常驻/隐藏。",
+    "stageTrackPillDesc": "播放器和播放队列中的正在播放卡片：显示一段时间后自动隐藏，或保持常驻/隐藏。",
     "stageTrackPillMode_auto": "限时显示",
     "stageTrackPillMode_always": "常驻显示",
     "stageTrackPillMode_never": "不显示",

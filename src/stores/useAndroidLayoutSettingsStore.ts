@@ -1,3 +1,5 @@
+import { isAndroidNativeRuntime } from '../utils/platform';
+import { getStoredBoolean, setStoredBoolean } from './storagePrimitives';
 import { create } from 'zustand';
 import {
     applyAndroidPhoneFit,
@@ -18,6 +20,8 @@ type AndroidLayoutSettingsState = {
     phoneFitEnabled: boolean;
     phoneFitOrientation: AndroidPhoneFitOrientation;
     immersiveModeEnabled: boolean;
+    immersiveHideTransport: boolean;
+    setImmersiveHideTransport: (enabled: boolean) => void;
     keepScreenOnEnabled: boolean;
     setPhoneFitEnabled: (enabled: boolean) => void;
     setPhoneFitOrientation: (orientation: AndroidPhoneFitOrientation) => void;
@@ -25,12 +29,14 @@ type AndroidLayoutSettingsState = {
     setKeepScreenOnEnabled: (enabled: boolean) => void;
 };
 
+export const IMMERSIVE_HIDE_TRANSPORT_KEY = 'folia_android_immersive_hide_transport';
 const IMMERSIVE_STORAGE_KEY = 'folia_android_immersive_mode';
 
 const readStoredImmersiveMode = (): boolean => {
     if (typeof window === 'undefined') return false;
     try {
-        return localStorage.getItem(IMMERSIVE_STORAGE_KEY) === 'true';
+        const saved = localStorage.getItem(IMMERSIVE_STORAGE_KEY);
+        return saved === null ? isAndroidNativeRuntime() : saved === 'true';
     } catch {
         return false;
     }
@@ -49,6 +55,11 @@ export const useAndroidLayoutSettingsStore = create<AndroidLayoutSettingsState>(
     phoneFitEnabled: readStoredAndroidPhoneFit(),
     phoneFitOrientation: readStoredAndroidPhoneFitOrientation(),
     immersiveModeEnabled: readStoredImmersiveMode(),
+    immersiveHideTransport: getStoredBoolean(IMMERSIVE_HIDE_TRANSPORT_KEY, false),
+    setImmersiveHideTransport: enabled => {
+        setStoredBoolean(IMMERSIVE_HIDE_TRANSPORT_KEY, enabled);
+        set({ immersiveHideTransport: enabled });
+    },
     keepScreenOnEnabled: readStoredKeepScreenOn(),
     setPhoneFitEnabled: (enabled) => {
         writeStoredAndroidPhoneFit(enabled);

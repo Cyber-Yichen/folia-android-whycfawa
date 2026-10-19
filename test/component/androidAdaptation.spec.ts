@@ -7,11 +7,12 @@ for (const viewport of [{ width: 740, height: 360 }, { width: 844, height: 390 }
         await page.setViewportSize(viewport);
         await mount('androidAdaptation');
         const gallery = page.locator('[data-visualizer-style]');
-        await expect(gallery).toHaveCount(14);
+        await expect(gallery).toHaveCount(15);
         await expect(gallery.locator('img')).toHaveCount(14);
         await page.locator('[data-visualizer-style="sonnet"]').click();
         await expect(page.locator('[data-visualizer-style="sonnet"]')).toHaveAttribute('aria-pressed', 'true');
         const controls = page.getByTestId('visualizer-settings-scroll');
+        await expect(controls.locator('input[type=range]').first()).toBeAttached({ timeout: 45000 });
         await expect.poll(() => controls.evaluate(el => el.scrollHeight - el.clientHeight)).toBeGreaterThan(0);
         await controls.evaluate(el => el.scrollTo({ top: el.scrollHeight }));
         await expect.poll(() => controls.evaluate(el => el.scrollTop)).toBeGreaterThan(0);

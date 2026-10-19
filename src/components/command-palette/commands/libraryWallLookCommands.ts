@@ -78,7 +78,7 @@ export const libraryWallLookCommands: CommandPaletteCommand[] = [
         'Let the info strip show the visualizer behind the wall',
         ['translucent strip', 'transparent seam', 'clear strip', 'bravais', '信息条透明', '透明信息条', '缝透明'],
         context => context.settings.toggleLibraryWallSeamClear(),
-        { icon: SquareDashed, isAvailable: isLibraryWallLookCommandAvailable },
+        { icon: SquareDashed, isAvailable: context => isLibraryWallLookCommandAvailable(context) && (context?.settings.canToggleLibraryWallSeamClear?.() ?? true) },
     ),
     defineCommand({
         id: 'library-wall-seam-style-picker',

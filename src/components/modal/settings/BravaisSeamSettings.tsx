@@ -1,3 +1,4 @@
+import { useLibraryWallSeamClear } from '../../../hooks/useLibraryWallSeamClear';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
@@ -23,19 +24,20 @@ type BravaisSeamSettingsProps = {
 
 const BravaisSeamSettings: React.FC<BravaisSeamSettingsProps> = ({ isDaylight, accentColor, toggleOnColor }) => {
     const { t } = useTranslation();
-    const { seamClear, seamStyle, setSeamClear, setSeamStyle } = useLibraryWallLookStore(useShallow(state => ({
-        seamClear: state.seamClear,
+    const { seamStyle, setSeamClear, setSeamStyle } = useLibraryWallLookStore(useShallow(state => ({
         seamStyle: state.seamStyle,
         setSeamClear: state.setSeamClear,
         setSeamStyle: state.setSeamStyle,
     })));
+    const { seamClear, performanceMode } = useLibraryWallSeamClear();
     const idleBorder = isDaylight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)';
 
     return (
         <>
             <BravaisSettingsToggleRow
                 label={t('options.bravaisSeamClear')}
-                description={t('options.bravaisSeamClearDesc')}
+                description={t(performanceMode ? 'options.androidPerformanceSeamClearDisabled' : 'options.bravaisSeamClearDesc')}
+                disabled={performanceMode}
                 checked={seamClear}
                 onChange={setSeamClear}
                 isDaylight={isDaylight}

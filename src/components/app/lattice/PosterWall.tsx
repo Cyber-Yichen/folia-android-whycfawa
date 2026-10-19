@@ -1,3 +1,7 @@
+import { useTouchWallCenterFocus } from '../../wall/useTouchWallCenterFocus';
+import { isAndroidNativeRuntime } from '../../../utils/platform';
+import { resolveLatticeViewportScale } from './latticeViewportScale';
+import type { CSSProperties } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SongResult } from '../../../types';
 import {
@@ -62,7 +66,7 @@ const METRICS: WallMetrics = { cellSize: CELL_SIZE, gap: GAP };
 const EXPANDED_SIZE = EXPANSION_SPAN.cols * (CELL_SIZE + GAP) - GAP;
 
 
-const getScale = (width: number) => width < 640 ? 0.52 : width < 1100 ? 0.64 : 0.76;
+const getScale = (width: number, height: number) => resolveLatticeViewportScale(width, height, EXPANDED_SIZE, isAndroidNativeRuntime());
 
 const getWorldBounds = (camera: LatticeCamera, viewport: { width: number; height: number }): Bounds => ({
     left: -camera.x / camera.scale,
@@ -82,6 +86,7 @@ export default function PosterWall({
 }: PosterWallProps) {
     countRender('PosterWall');
     const containerRef = useRef<HTMLDivElement>(null);
+    const touchFocused = useTouchWallCenterFocus(containerRef);
     const worldRef = useRef<HTMLDivElement>(null);
     const cameraRef = useRef<LatticeCamera>({ x: 34, y: 80, scale: 0.76 });
     const viewportRef = useRef({ width: 1280, height: 720 });
@@ -128,6 +133,7 @@ export default function PosterWall({
 
     const applyCamera = useCallback((next: LatticeCamera, updateBounds = false) => {
         cameraRef.current = next;
+        containerRef.current?.style.setProperty('--lattice-camera-scale', String(next.scale));
         if (worldRef.current) {
             /*
              * 相机用**二维** transform，不要用 translate3d。
@@ -160,9 +166,12 @@ export default function PosterWall({
         const container = containerRef.current;
         if (!container) return;
         const observer = new ResizeObserver(([entry]) => {
+            const previous = viewportRef.current;
+            const camera = cameraRef.current;
+            const center = { x: (previous.width / 2 - camera.x) / camera.scale, y: (previous.height / 2 - camera.y) / camera.scale };
             viewportRef.current = { width: entry.contentRect.width, height: entry.contentRect.height };
-            const scale = getScale(entry.contentRect.width);
-            applyCamera({ ...cameraRef.current, scale }, true);
+            const scale = getScale(entry.contentRect.width, entry.contentRect.height);
+            applyCamera({ x: entry.contentRect.width / 2 - center.x * scale, y: entry.contentRect.height / 2 - center.y * scale, scale }, true);
             setCameraScale(previous => previous === scale ? previous : scale);
             setMeasured(true);
         });
@@ -227,7 +236,7 @@ export default function PosterWall({
         };
     }, [geometry.cellHeight, geometry.cellWidth, performanceMode]);
 
-    const { panTo, stopPan, animationRef } = useWallCameraPan({ cameraRef, viewportRef, reducedMotion, applyCamera, reserveBounds });
+    const { panTo, stopPan, animationRef } = useWallCameraPan({ cameraRef, viewportRef, reducedMotion, applyCamera, reserveBounds, centerOffsetY: isAndroidNativeRuntime() ? -64 : 0 });
 
     useEffect(() => {
         if (!measured || entranceDone) return;
@@ -292,6 +301,7 @@ export default function PosterWall({
 
     const { didDragRef, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onClickCapture } = useWallPointerPan({
         applyCamera,
+        onZoomEnd: scale => setCameraScale(previous => previous === scale ? previous : scale),
         animationRef,
         stopPan,
         containerRef,
@@ -389,7 +399,8 @@ export default function PosterWall({
     return (
         <div
             ref={containerRef}
-            className="lattice-field"
+            className={isAndroidNativeRuntime() ? 'lattice-field is-touch' : 'lattice-field'}
+            style={{ '--lattice-camera-scale': cameraScale } as CSSProperties}
             tabIndex={-1}
             onKeyDown={handleKeyDown}
             onFocusCapture={handleFocusCapture}
@@ -414,7 +425,7 @@ export default function PosterWall({
                         <LatticePoster
                             key={instance.instanceId}
                             instanceId={instance.instanceId}
-                            isFocused={focused?.instanceId === instance.instanceId}
+                            isFocused={isAndroidNativeRuntime() ? touchFocused === instance.instanceId : focused?.instanceId === instance.instanceId}
                             tile={tile}
                             rect={rect}
                             gap={METRICS.gap}

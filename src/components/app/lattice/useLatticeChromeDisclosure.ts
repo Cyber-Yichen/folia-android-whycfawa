@@ -1,3 +1,4 @@
+import { isAndroidNativeRuntime } from '../../../utils/platform';
 import { useEffect, useRef, useState, type FocusEvent, type PointerEvent } from 'react';
 
 // src/components/app/lattice/useLatticeChromeDisclosure.ts
@@ -26,7 +27,7 @@ export function useLatticeChromeDisclosure(expanded: boolean) {
         // Pointer hover is tracked here already, so the poster's own lift reads it rather than
         // running a second gesture; touch pointers are filtered out below, as they must be.
         hovered,
-        revealed: expanded && (hovered || touchOpen || keyboardFocus),
+        revealed: expanded && (isAndroidNativeRuntime() || hovered || touchOpen || keyboardFocus),
         toggleTouch: () => { if (pointerTypeRef.current === 'touch') setTouchOpen(value => !value); },
         toggleKeyboard: () => setTouchOpen(value => !value),
         onPointerDownCapture: (event: PointerEvent<HTMLElement>) => {

@@ -1,4 +1,6 @@
 import React from 'react';
+import { Shuffle } from 'lucide-react';
+import { useVisualizerSettingsStore } from '../../stores/useVisualizerSettingsStore';
 import type { Theme, VisualizerMode } from '../../types';
 import { useFoliumRegistryEntries } from '../../mods/folium/registry';
 import { visualizersRegistry } from '../../mods/folium/registries/visualizers';
@@ -18,6 +20,7 @@ type Props = {
 };
 const VisPlaygroundStylePicker: React.FC<Props> = ({ value, onChange, theme, t }) => {
     useFoliumRegistryEntries(visualizersRegistry);
+    const random = useVisualizerSettingsStore(state => state.randomVisualizerModePerSong);
     return (
         <div className="shrink-0 min-w-0">
             <div className="mb-2 flex items-center gap-2 px-1 text-xs" style={{ color: theme.secondaryColor }}>
@@ -26,8 +29,14 @@ const VisPlaygroundStylePicker: React.FC<Props> = ({ value, onChange, theme, t }
             </div>
             <div className="overflow-x-auto overscroll-x-contain custom-scrollbar">
                 <div className="vis-playground-styles" role="group" aria-label={t('options.visualizerMode')}>
+                    <button type="button" aria-pressed={random} aria-label={t('ui.visualizerRandom')} data-visualizer-style="__random__"
+                        onClick={() => { useVisualizerSettingsStore.getState().handleToggleRandomVisualizerModePerSong(true); onChange?.('__random__'); }}
+                        className="min-w-0 rounded-lg text-xs" style={{ color: random ? theme.primaryColor : theme.secondaryColor }}>
+                        <span className="grid aspect-[16/10] place-items-center rounded-lg border" style={{ borderColor: random ? theme.accentColor : colorWithAlpha(theme.secondaryColor, 0.2) }}><Shuffle size={26} /></span>
+                        <span className="mt-1.5 block">{t('ui.visualizerRandom')}</span>
+                    </button>
                     {VISUALIZER_REGISTRY.map(entry => {
-                        const chosen = entry.mode === value;
+                        const chosen = !random && entry.mode === value;
                         const label = getVisualizerModeLabel(entry.mode, t);
                         const picture = pictures['./style-previews/' + entry.mode + '.jpg'];
                         return (
@@ -37,7 +46,7 @@ const VisPlaygroundStylePicker: React.FC<Props> = ({ value, onChange, theme, t }
                                 aria-pressed={chosen}
                                 aria-label={label}
                                 data-visualizer-style={entry.mode}
-                                onClick={() => onChange?.(entry.mode)}
+                                onClick={() => { useVisualizerSettingsStore.getState().handleToggleRandomVisualizerModePerSong(false, { notify: false }); onChange?.(entry.mode); }}
                                 className="min-w-0 rounded-lg text-xs focus-visible:outline-2 focus-visible:outline-offset-2"
                                 style={{ color: chosen ? theme.primaryColor : theme.secondaryColor, outlineColor: theme.accentColor }}
                             >

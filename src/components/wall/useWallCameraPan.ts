@@ -20,6 +20,7 @@ type WallCameraPanOptions = {
      * to settle before re-culling loses the race against held arrow keys.
      */
     reserveBounds: (camera: LatticeCamera) => void;
+    centerOffsetY?: number;
 };
 
 export const useWallCameraPan = ({
@@ -28,6 +29,7 @@ export const useWallCameraPan = ({
     reducedMotion,
     applyCamera,
     reserveBounds,
+    centerOffsetY = 0,
 }: WallCameraPanOptions) => {
     const animationRef = useRef<{ stop: () => void } | null>(null);
 
@@ -44,7 +46,7 @@ export const useWallCameraPan = ({
         const viewport = viewportRef.current;
         const target = {
             x: viewport.width / 2 - (rect.x + rect.width / 2) * from.scale,
-            y: viewport.height / 2 - (rect.y + rect.height / 2) * from.scale,
+            y: viewport.height / 2 + centerOffsetY - (rect.y + rect.height / 2) * from.scale,
             scale: from.scale,
         };
         reserveBounds(target);
@@ -66,7 +68,7 @@ export const useWallCameraPan = ({
                 applyCamera(target, true);
             },
         });
-    }, [applyCamera, cameraRef, reducedMotion, reserveBounds, viewportRef]);
+    }, [applyCamera, cameraRef, centerOffsetY, reducedMotion, reserveBounds, viewportRef]);
 
     useEffect(() => () => animationRef.current?.stop(), []);
 

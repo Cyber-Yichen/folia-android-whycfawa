@@ -8,6 +8,7 @@ type BravaisSettingsToggleRowProps = {
     label: string;
     description: string;
     checked: boolean;
+    disabled?: boolean;
     onChange: (checked: boolean) => void;
     isDaylight: boolean;
     /** 开着时的底色（主题第二色）。 */
@@ -21,6 +22,7 @@ const BravaisSettingsToggleRow: React.FC<BravaisSettingsToggleRowProps> = ({
     label,
     description,
     checked,
+    disabled = false,
     onChange,
     isDaylight,
     onColor,
@@ -41,11 +43,12 @@ const BravaisSettingsToggleRow: React.FC<BravaisSettingsToggleRowProps> = ({
             <button
                 type="button"
                 role="switch"
+                disabled={disabled}
                 aria-checked={checked}
                 aria-label={label}
                 {...(dataAttribute ? { [dataAttribute]: '' } : {})}
                 onClick={() => onChange(!checked)}
-                className={`w-12 h-6 rounded-full p-1 transition-colors shrink-0 ${!checked ? toggleOffBackgroundClass : ''}`}
+                className={`w-12 h-6 rounded-full p-1 transition-colors shrink-0 disabled:opacity-40 disabled:cursor-not-allowed ${!checked ? toggleOffBackgroundClass : ''}`}
                 style={{ backgroundColor: checked ? onColor || 'rgba(114, 119, 134, 1)' : undefined }}
             >
                 <div className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${checked ? 'translate-x-6' : 'translate-x-0'}`} />

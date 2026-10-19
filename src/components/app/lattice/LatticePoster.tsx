@@ -1,3 +1,4 @@
+import { isAndroidNativeRuntime } from '../../../utils/platform';
 import { WallTitle } from '../../wall/WallTitle';
 import { lazy, memo, Suspense, useMemo } from 'react';
 import { motion, type TransformProperties, type Variants } from 'framer-motion';
@@ -155,7 +156,7 @@ function LatticePoster({
     const { t } = useTranslation();
     const chrome = useLatticeChromeDisclosure(expanded);
     // The open card is already the foreground and carries the lyric canvas, so it never pops.
-    const popped = !expanded && (chrome.hovered || isFocused);
+    const popped = !expanded && ((!isAndroidNativeRuntime() && chrome.hovered) || isFocused);
     const popScaleX = popped && rect.width > 0 ? (rect.width + gap * 2) / rect.width : 1;
     const popScaleY = popped && rect.height > 0 ? (rect.height + gap * 2) / rect.height : 1;
     const isCurrent = tile.section === 'now';
