@@ -1638,6 +1638,15 @@ export default {
 
     "immersiveHideTransport": "Also auto-hide playback controls",
 
+    "touchPlayerAppearance": "Touch player appearance",
+    "touchPlayerCompactStyle": "Compact player",
+    "touchPlayerStyle_cover": "With cover",
+    "touchPlayerStyle_text": "Without cover",
+    "touchPlayerStyle_progress": "Progress only",
+    "touchPlayerExpansion": "Expand player",
+    "touchPlayerExpansion_wide": "Horizontally",
+    "touchPlayerExpansion_tall": "Vertically",
+    "touchPlayerNowPlaying": "Now playing",
     "playerControlsExpand": "Expand player controls",
     "playerControlsCollapse": "Collapse player controls",
     "playerControlsPrevious": "Previous track",

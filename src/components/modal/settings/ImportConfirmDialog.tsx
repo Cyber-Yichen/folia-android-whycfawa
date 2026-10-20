@@ -92,6 +92,7 @@ const FIELD_LABEL_KEYS: Record<string, string> = {
     stageTrackPillTimeoutSec: 'options.stageTrackPillTimeout',
     stageTrackPillOnHome: 'options.stageTrackPillOnHome',
     stageTrackPillPosition: 'options.stageTrackPillReposition',
+    touchPlayerBar: 'options.touchPlayerAppearance',
     libraryWallStackEdges: 'options.bravaisStackEdges',
     libraryWallSeamClear: 'options.bravaisSeamClear',
     libraryWallSeamStyle: 'options.bravaisSeamStyle',

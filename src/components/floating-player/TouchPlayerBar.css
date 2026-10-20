@@ -1,31 +1,72 @@
-/* src/components/floating-player/TouchPlayerBar.css */
-.folia-touch-player-host { max-width: min(520px, calc(100% - 24px)) !important; padding-inline: 0 !important; }
-.folia-touch-player-capsule { width: 100%; padding: 12px 16px 8px; border-radius: 26px; }
-.folia-touch-player-capsule[data-folia-player-bar-expanded="false"] { border-radius: 42px; }
+/* Touch transport follows the application's existing typography, colours and glass material. */
+.folia-touch-player-host { max-width: min(260px, calc(100% - 24px)) !important; padding-inline: 0 !important; container-type: inline-size; transition: max-width 280ms cubic-bezier(.2,.8,.2,1); }
+.folia-touch-player-host[data-touch-expanded="true"] { max-width: min(520px, calc(100% - 24px)) !important; }
+.folia-touch-player-capsule { width: 100%; padding: 8px; border-radius: 30px; }
 .touch-player-bar { display: flex; flex-direction: column; gap: 6px; width: 100%; }
-.touch-player-heading { display: flex; align-items: center; min-width: 0; gap: 8px; }
-.touch-player-identity { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; text-align: left; border: 0; background: none; padding: 0; color: inherit; }
-.touch-player-cover { position: relative; display: grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 9px; background: color-mix(in srgb, currentColor 10%, transparent); overflow: hidden; }
+.touch-player-heading { display: flex; align-items: center; min-width: 0; gap: 2px; }
+.touch-player-identity { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; text-align: left; border: 0; background: none; padding: 0; color: inherit; min-height: 44px; }
+.touch-player-cover { position: relative; display: grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 10px; background: color-mix(in srgb, currentColor 10%, transparent); overflow: hidden; }
 .touch-player-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.touch-player-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.touch-player-title { font-size: 15px; font-weight: 650; line-height: 1.25; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.touch-player-artist { font-size: 12px; line-height: 1.25; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.touch-player-compact-actions { display: flex; align-items: center; gap: 4px; flex: none; }
-.touch-player-action { display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; flex: none; padding: 0; border-radius: 50%; color: inherit; background: none; border: 0; }
+.touch-player-copy { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+.touch-player-title { font-size: 15px; font-weight: 650; line-height: 1.25; }
+.touch-player-artist { font-size: 12px; line-height: 1.25; }
+.touch-player-text { display: block; overflow: hidden; white-space: nowrap; }
+.touch-player-text > span { display: block; width: max-content; min-width: 100%; }
+.touch-player-text[data-overflow="true"] > span { animation: touch-player-text-pan var(--touch-text-duration) ease-in-out infinite alternate; }
+@keyframes touch-player-text-pan { 0%, 18% { transform: translateX(0); } 82%, 100% { transform: translateX(var(--touch-text-travel)); } }
+.touch-player-compact-actions { display: flex; align-items: center; flex: none; }
+.touch-player-action { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; flex: none; padding: 0; border-radius: 50%; color: inherit; background: none; border: 0; }
 .touch-player-action:disabled { opacity: 0.25; }
 .touch-player-action:active:not(:disabled) { background: color-mix(in srgb, currentColor 12%, transparent); }
-.touch-player-action:focus-visible, .touch-player-identity:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.touch-player-action:focus-visible, .touch-player-identity:focus-visible, .touch-player-progress-disclosure:focus-visible { outline: 2px solid currentColor; outline-offset: -2px; }
 .touch-player-transport { display: grid; grid-template-columns: 44px 52px 56px 52px 44px; align-items: center; justify-content: center; gap: 4px; padding-top: 2px; }
 .touch-player-transport .touch-player-action { width: 100%; height: 52px; }
 .touch-player-transport .is-play { height: 56px; background: color-mix(in srgb, currentColor 12%, transparent); }
 .touch-player-transport .is-secondary { opacity: 0.7; }
 .touch-player-progress { padding: 8px 4px; }
-.touch-player-progress.is-compact [data-folium-part="progress.time"],
-.touch-player-progress.is-compact [data-folium-part="progress.duration"] { display: none; }
 .touch-player-progress input[type=range] { top: 50%; height: 28px; transform: translateY(-50%); }
 .touch-player-progress [data-folium-part="progress.track"] { height: 3px; }
-@media (max-width: 360px) {
-    .folia-touch-player-capsule { padding-inline: 12px; }
-    .touch-player-identity { gap: 8px; }
-    .touch-player-action { width: 44px; height: 44px; }
+/* The rail is part of the lower capsule edge. Its input extends upwards without moving the rail. */
+.touch-player-progress.is-compact { position: absolute; inset: auto 0 0; height: 12px; padding: 0; }
+.touch-player-progress.is-compact [data-folium-part="progress.root"] { position: absolute; inset: auto 0 0; gap: 0; }
+.touch-player-progress.is-compact [data-folium-part="progress.time"],
+.touch-player-progress.is-compact [data-folium-part="progress.duration"] { display: none; }
+.touch-player-progress.is-compact [data-folium-part="progress.track"] { height: 2px; border-radius: 0; }
+
+.touch-player-progress.is-compact input[type=range] { top: auto; bottom: 0; height: 12px; transform: none; }
+.touch-player-progress-disclosure { width: 100%; height: 44px; padding: 0; border: 0; background: none; color: inherit; }
+.folia-touch-player-capsule[data-touch-style="progress"][data-folia-player-bar-expanded="false"] { padding: 0 8px; background: transparent; border-color: transparent; box-shadow: none; backdrop-filter: none; border-radius: 8px; }
+.folia-touch-player-capsule[data-touch-style="text"][data-folia-player-bar-expanded="false"] .touch-player-identity { padding-left: 8px; }
+/* Wide expansion is one row; short viewports fall back to the same accessible two-row controls. */
+@container (min-width: 470px) {
+    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-bar { flex-direction: row; align-items: center; gap: 2px; min-height: 44px; }
+    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-heading { display: contents; }
+    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-transport { display: flex; gap: 0; padding: 0; order: 1; }
+    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-transport .touch-player-action { width: 44px; height: 44px; }
+    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-now-playing { order: 2; }
+    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-collapse { order: 3; }
+    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-progress { position: absolute; inset: auto 0 0; padding: 0; height: 12px; }
+    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-progress [data-folium-part="progress.root"] { position: absolute; inset: auto 0 0; gap: 0; }
+    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-progress [data-folium-part="progress.time"],
+    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-progress [data-folium-part="progress.duration"] { display: none; }
+    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-progress [data-folium-part="progress.track"] { height: 2px; border-radius: 0; }
+    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-progress input[type=range] { top: auto; bottom: 0; height: 12px; transform: none; }
 }
+@container (max-width: 300px) {
+    .touch-player-transport { grid-template-columns: 44px 44px 48px 44px 44px; gap: 2px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .folia-touch-player-host { transition: none; }
+    .touch-player-text[data-overflow="true"] > span { animation: none; }
+}
+
+.touch-player-edge { display: none; position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.folia-touch-player-capsule[data-folia-player-bar-expanded="false"]:not([data-touch-style="progress"]) .touch-player-edge { display: block; }
+.folia-touch-player-capsule[data-folia-player-bar-expanded="false"]:not([data-touch-style="progress"]) .touch-player-progress [data-folium-part="progress.track"] { background: transparent; }
+.folia-touch-player-capsule[data-folia-player-bar-expanded="false"]:not([data-touch-style="progress"]) .touch-player-progress [data-folium-part="progress.fill"] { visibility: hidden; }
+@container (min-width: 470px) {
+    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-edge { display: block; }
+    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-progress [data-folium-part="progress.track"] { background: transparent; }
+    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-progress [data-folium-part="progress.fill"] { visibility: hidden; }
+}
+[data-folia-player-chrome][aria-hidden="true"] .touch-player-text > span { animation-play-state: paused; }

@@ -157,6 +157,7 @@ exports[`store contract > keeps every localStorage key the stores read or write 
   "tempera_android_compression_v1",
   "tempera_tuning",
   "tilt_tuning",
+  "touch_player_bar_appearance",
   "url_background_list",
   "url_background_selected_id",
   "video_layer_enabled",

@@ -1,3 +1,4 @@
+import TouchPlayerBarSettings from './TouchPlayerBarSettings';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Move, RotateCcw } from 'lucide-react';
@@ -134,6 +135,7 @@ const PlayerBottomBarSection: React.FC<PlayerBottomBarSectionProps> = ({
 
     return (
         <>
+            <TouchPlayerBarSettings isDaylight={isDaylight} theme={theme} settingsCardClass={settingsCardClass} />
             <div className={`p-4 rounded-xl border space-y-3 ${settingsCardClass}`}>
                 <div className="space-y-1">
                     <div className="text-sm font-medium flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>

@@ -1637,6 +1637,15 @@ export default {
 
     "immersiveHideTransport": "同时自动隐藏播放栏",
 
+    "touchPlayerAppearance": "触屏播放栏外观",
+    "touchPlayerCompactStyle": "收起样式",
+    "touchPlayerStyle_cover": "显示封面",
+    "touchPlayerStyle_text": "不显示封面",
+    "touchPlayerStyle_progress": "仅进度条",
+    "touchPlayerExpansion": "展开方向",
+    "touchPlayerExpansion_wide": "横向展开",
+    "touchPlayerExpansion_tall": "纵向展开",
+    "touchPlayerNowPlaying": "正在播放",
     "playerControlsExpand": "展开播放栏",
     "playerControlsCollapse": "收起播放栏",
     "playerControlsPrevious": "上一首",

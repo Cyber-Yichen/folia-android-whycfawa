@@ -1631,6 +1631,15 @@ export default {
 
     "immersiveHideTransport": "Sembunyikan kontrol pemutaran secara otomatis",
 
+    "touchPlayerAppearance": "Tampilan pemutar sentuh",
+    "touchPlayerCompactStyle": "Pemutar ringkas",
+    "touchPlayerStyle_cover": "Dengan sampul",
+    "touchPlayerStyle_text": "Tanpa sampul",
+    "touchPlayerStyle_progress": "Hanya progres",
+    "touchPlayerExpansion": "Perluas pemutar",
+    "touchPlayerExpansion_wide": "Horizontal",
+    "touchPlayerExpansion_tall": "Vertikal",
+    "touchPlayerNowPlaying": "Sedang diputar",
     "playerControlsExpand": "Perluas kontrol pemutar",
     "playerControlsCollapse": "Ciutkan kontrol pemutar",
     "playerControlsPrevious": "Lagu sebelumnya",

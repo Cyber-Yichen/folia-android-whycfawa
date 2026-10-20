@@ -1,5 +1,6 @@
 import { useImmersiveChromeStore } from '../stores/useImmersiveChromeStore';
 import TouchPlayerBar from './floating-player/TouchPlayerBar';
+import { useTouchPlayerSettingsStore } from '../stores/useTouchPlayerSettingsStore';
 import { useTouchPlayerDisclosure } from './floating-player/useTouchPlayerDisclosure';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { isAndroidNativeRuntime } from '../utils/platform';
@@ -147,6 +148,7 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
     const [isTimelineOpen, setIsTimelineOpen] = useState(false);
     const coarsePointer = useMediaQuery('(hover: none) and (pointer: coarse)');
     const touchControls = isAndroidNativeRuntime() || coarsePointer;
+    const touchAppearance = useTouchPlayerSettingsStore(state => state.appearance);
     const expandTimeoutRef = useRef<number | null>(null);
     const collapseTimeoutRef = useRef<number | null>(null);
 
@@ -362,6 +364,8 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
                     ${currentView === 'home'
                         ? 'max-w-[calc(100vw-120px)] md:max-w-[min(calc(32rem_+_var(--folium-player-bar-extra,0px)),calc(100vw-120px))]'
                         : 'max-w-[min(calc(32rem_+_var(--folium-player-bar-extra,0px)),100vw)] px-4'}`}
+                data-touch-expanded={touchControls ? showExpanded : undefined}
+                data-touch-expansion={touchControls ? touchAppearance.expansion : undefined}
                 style={{ bottom: bottomBarBottomPx }}
             >
             <motion.div
@@ -397,6 +401,8 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
                         // 而且 dragConstraints 依赖的起始值放在 ref 里不会触发重渲染，读到的会是上一帧的。
                         ref={disclosure.rootRef}
                         data-folia-player-bar-touch={touchControls || undefined}
+                        data-touch-style={touchControls ? touchAppearance.compactStyle : undefined}
+                        data-touch-expansion={touchControls ? touchAppearance.expansion : undefined}
                         data-ponder="player-bar"
                         data-folia-player-bar-expanded={showExpanded ? 'true' : 'false'}
                         onPointerDown={handlePositionDragStart}
@@ -425,6 +431,10 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
                                 slotPrimary={slotPrimary} slotSecondary={slotSecondary} slotContext={resolvedSlotContext}
                                 primaryColor={primaryColor} secondaryColor={secondaryColor} isDaylight={isDaylight}
                                 expanded={showExpanded} onExpand={disclosure.expand} onCollapse={disclosure.collapse}
+                                appearance={touchAppearance} onNowPlaying={() => {
+                                    if (currentView === 'lattice' && onFocusLatticeCurrentSong) onFocusLatticeCurrentSong();
+                                    else onNavigateToPlayer();
+                                }}
                             /> : showExpanded ? (
                                 <ExpandedView
                                     currentSong={currentSong}

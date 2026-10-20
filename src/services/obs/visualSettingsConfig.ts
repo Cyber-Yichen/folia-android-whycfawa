@@ -1,3 +1,4 @@
+import { useTouchPlayerSettingsStore } from '../../stores/useTouchPlayerSettingsStore';
 import { useAndroidPerformanceStore } from '../../stores/useAndroidPerformanceStore';
 import { collectVisualizerTunings } from '../../components/visualizer/tuningRegistry';
 import { readStoredThemeAutoGenerateEnabled, readStoredThemeAutoSwitchEnabled, readStoredThemeGenerationSource } from '../themePreferences';
@@ -33,6 +34,7 @@ export function buildVisualSettingsConfig(): Record<string, unknown> {
     visualizerMode: storeVisualizer.visualizerMode,
     randomVisualizerModePerSong: storeVisualizer.randomVisualizerModePerSong,
     randomVisualizerModes: storeVisualizer.randomVisualizerModes,
+    touchPlayerBar: useTouchPlayerSettingsStore.getState().appearance,
     visualizerBackgroundMode: storeVisualizer.visualizerBackgroundMode,
     backgroundOpacity: storeVisualizer.backgroundOpacity,
     // The other three legs of background.common, alongside the opacity above. The local OBS browser

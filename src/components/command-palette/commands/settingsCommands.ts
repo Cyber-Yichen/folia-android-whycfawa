@@ -479,8 +479,8 @@ export const settingsCommands: CommandPaletteCommand[] = [
         'Player button slots',
         'Choose which actions the two buttons beside the progress bar run',
         [
-            'progress bar buttons', 'customize player buttons',
-            '进度条按钮', '播放按钮自定义', '按钮槽位',
+            'progress bar buttons', 'customize player buttons', 'touch player appearance',
+            '进度条按钮', '播放按钮自定义', '按钮槽位', '播放栏样式', '横向展开',
         ],
         'bottomUiSettings',
     ),
