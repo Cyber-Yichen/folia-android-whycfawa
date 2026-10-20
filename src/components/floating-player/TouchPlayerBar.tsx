@@ -1,5 +1,5 @@
-import React, { useRef } from 'react';
-import { AudioLines, ChevronDown, Disc3, Pause, Play, SkipBack, SkipForward } from 'lucide-react';
+import React from 'react';
+import { Disc3, Pause, Play, SkipBack, SkipForward } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { FloatingPlayerControlsProps } from '../FloatingPlayerControls';
 import { PlayerState } from '../../types';
@@ -9,7 +9,6 @@ import ProgressBar from '../ProgressBar';
 import './TouchPlayerBar.css';
 import TouchPlayerText from './TouchPlayerText';
 import type { TouchPlayerBarAppearance } from '../../types/touchPlayerBar';
-import TouchPlayerEdgeProgress from './TouchPlayerEdgeProgress';
 
 // src/components/floating-player/TouchPlayerBar.tsx
 // Compact transport remains usable; disclosure only adds controls rather than hiding basic actions.
@@ -21,7 +20,6 @@ type TouchPlayerBarProps = Pick<FloatingPlayerControlsProps,
     appearance: TouchPlayerBarAppearance;
     onNowPlaying: () => void;
     onExpand: () => void;
-    onCollapse: () => void;
     onSeekStart: () => void;
     onSeekEnd: () => void;
     slotContext: PlayerControlSlotContext;
@@ -30,10 +28,9 @@ export default function TouchPlayerBar({
     currentSong, artistName, coverUrl, playerState, currentTime, duration, onSeek, onTogglePlay,
     canTogglePlay, controlsDisabled, trackNavigation, slotPrimary, slotSecondary, slotContext,
     primaryColor = 'var(--text-primary)', secondaryColor = 'var(--text-secondary)', isDaylight,
-    expanded, appearance, onNowPlaying, onExpand, onCollapse, onSeekStart, onSeekEnd,
+    expanded, appearance, onNowPlaying, onExpand, onSeekStart, onSeekEnd,
 }: TouchPlayerBarProps) {
     const { t } = useTranslation();
-    const progressPathRef = useRef<SVGPathElement>(null);
     const playing = playerState === PlayerState.PLAYING;
     const action = (run: (() => void) | undefined) => (event: React.MouseEvent) => {
         event.stopPropagation();
@@ -48,11 +45,11 @@ export default function TouchPlayerBar({
         disabled={!trackNavigation?.canNext || controlsDisabled}
         aria-label={trackNavigation?.nextLabel ?? t('options.playerControlsNext')}
         onClick={action(trackNavigation?.onNext)}><SkipForward size={26} fill="currentColor" /></button>;
-    const progressOnly = !expanded && appearance.compactStyle === 'progress';
-    return <div className="touch-player-bar" data-progress-only={progressOnly} style={{ color: primaryColor }}>
-        {!progressOnly && <div className="touch-player-heading">
+    return <div className="touch-player-bar" style={{ color: primaryColor }}>
+        <div className="touch-player-heading">
             <button type="button" className="touch-player-identity" disabled={controlsDisabled} aria-expanded={expanded}
-                aria-label={t('options.playerControlsExpand')} onClick={action(onExpand)}>
+                aria-label={t(expanded ? 'options.touchPlayerNowPlaying' : 'options.playerControlsExpand')}
+                onClick={action(expanded ? onNowPlaying : onExpand)}>
                 {(expanded || appearance.compactStyle === 'cover') && <span className="touch-player-cover">
                     <Disc3 size={24} aria-hidden />
                     {coverUrl && <img key={coverUrl} src={coverUrl} alt="" draggable={false}
@@ -63,12 +60,8 @@ export default function TouchPlayerBar({
                     {artistName && <TouchPlayerText className="touch-player-artist" text={artistName} color={secondaryColor} />}
                 </span>
             </button>
-            {expanded && <button type="button" className="touch-player-action touch-player-now-playing"
-                aria-label={t('options.touchPlayerNowPlaying')} title={t('options.touchPlayerNowPlaying')}
-                disabled={controlsDisabled} onClick={action(onNowPlaying)}><AudioLines size={24} strokeWidth={1.75} /></button>}
-            {expanded ? <button type="button" className="touch-player-action touch-player-collapse" aria-label={t('options.playerControlsCollapse')}
-                disabled={controlsDisabled} onClick={action(onCollapse)}><ChevronDown size={24} /></button> : <div className="touch-player-compact-actions">{play}{next}</div>}
-        </div>}
+            {!expanded && <div className="touch-player-compact-actions">{play}{next}</div>}
+        </div>
         {expanded && <div className="touch-player-transport">
             <PlayerControlSlotButton actionId={slotPrimary} context={slotContext} primaryColor={primaryColor}
                 isDaylight={isDaylight} controlsDisabled={controlsDisabled} className="touch-player-action is-secondary" />
@@ -80,14 +73,11 @@ export default function TouchPlayerBar({
             <PlayerControlSlotButton actionId={slotSecondary} context={slotContext} primaryColor={primaryColor}
                 isDaylight={isDaylight} controlsDisabled={controlsDisabled} className="touch-player-action is-secondary" />
         </div>}
-        {progressOnly && <button type="button" className="touch-player-progress-disclosure"
-            aria-label={t('options.playerControlsExpand')} disabled={controlsDisabled} onClick={action(onExpand)} />}
-        {!progressOnly && <TouchPlayerEdgeProgress progressPathRef={progressPathRef} initialProgress={duration > 0 ? currentTime.get() / duration : 0} color={primaryColor} />}
         <div className={expanded ? 'touch-player-progress' : 'touch-player-progress is-compact'}
             data-folia-player-bar-progress onClick={event => event.stopPropagation()}>
             <ProgressBar currentTime={currentTime} duration={duration} onSeek={onSeek}
                 onSeekStart={onSeekStart} onSeekEnd={onSeekEnd} disabled={controlsDisabled || !canTogglePlay}
-                primaryColor={primaryColor} secondaryColor={secondaryColor} collapsed={!expanded} ariaLabel={t('ui.seek')} progressPathRef={progressPathRef} />
+                primaryColor={primaryColor} secondaryColor={secondaryColor} collapsed={!expanded} ariaLabel={t('ui.seek')} edgeStyle={expanded ? 'rounded' : 'square'} />
         </div>
     </div>;
 }

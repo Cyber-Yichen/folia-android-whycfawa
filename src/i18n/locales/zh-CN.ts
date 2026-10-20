@@ -1647,7 +1647,6 @@ export default {
     "touchPlayerExpansion_tall": "纵向展开",
     "touchPlayerNowPlaying": "正在播放",
     "playerControlsExpand": "展开播放栏",
-    "playerControlsCollapse": "收起播放栏",
     "playerControlsPrevious": "上一首",
     "playerControlsNext": "下一首",
 

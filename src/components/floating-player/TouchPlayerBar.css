@@ -1,9 +1,11 @@
 /* Touch transport follows the application's existing typography, colours and glass material. */
-.folia-touch-player-host { max-width: min(260px, calc(100% - 24px)) !important; padding-inline: 0 !important; container-type: inline-size; transition: max-width 280ms cubic-bezier(.2,.8,.2,1); }
-.folia-touch-player-host[data-touch-expanded="true"] { max-width: min(520px, calc(100% - 24px)) !important; }
-.folia-touch-player-capsule { width: 100%; padding: 8px; border-radius: 30px; }
+.folia-touch-player-host { max-width: min(260px, calc(100% - 24px)) !important; padding-inline: 0 !important; transition: max-width 280ms cubic-bezier(.2,.8,.2,1); }
+.folia-touch-player-host[data-touch-expanded="true"],
+.folia-touch-player-host[data-touch-style="progress"] { max-width: min(520px, calc(100% - 24px)) !important; }
+.folia-touch-player-capsule { width: 100%; height: 62px; padding: 8px; border-radius: 30px; transition: height 280ms cubic-bezier(.2,.8,.2,1), width 280ms cubic-bezier(.2,.8,.2,1), border-radius 280ms cubic-bezier(.2,.8,.2,1), background-color 300ms, border-color 300ms; }
+.folia-touch-player-capsule[data-folia-player-bar-expanded="true"] { height: 156px; border-radius: 26px; }
 .touch-player-bar { display: flex; flex-direction: column; gap: 6px; width: 100%; }
-.touch-player-heading { display: flex; align-items: center; min-width: 0; gap: 2px; }
+.touch-player-heading { display: flex; align-items: center; min-width: 0; gap: 2px; height: 44px; flex: none; }
 .touch-player-identity { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; text-align: left; border: 0; background: none; padding: 0; color: inherit; min-height: 44px; }
 .touch-player-cover { position: relative; display: grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 10px; background: color-mix(in srgb, currentColor 10%, transparent); overflow: hidden; }
 .touch-player-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
@@ -18,55 +20,41 @@
 .touch-player-action { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; flex: none; padding: 0; border-radius: 50%; color: inherit; background: none; border: 0; }
 .touch-player-action:disabled { opacity: 0.25; }
 .touch-player-action:active:not(:disabled) { background: color-mix(in srgb, currentColor 12%, transparent); }
-.touch-player-action:focus-visible, .touch-player-identity:focus-visible, .touch-player-progress-disclosure:focus-visible { outline: 2px solid currentColor; outline-offset: -2px; }
-.touch-player-transport { display: grid; grid-template-columns: 44px 52px 56px 52px 44px; align-items: center; justify-content: center; gap: 4px; padding-top: 2px; }
+.touch-player-action:focus-visible, .touch-player-identity:focus-visible { outline: 2px solid currentColor; outline-offset: -2px; }
+.touch-player-transport { display: grid; grid-template-columns: 44px 52px 56px 52px 44px; align-items: center; justify-content: center; gap: 4px; height: 56px; flex: none; animation: touch-player-controls-in 220ms ease-out both; }
 .touch-player-transport .touch-player-action { width: 100%; height: 52px; }
 .touch-player-transport .is-play { height: 56px; background: color-mix(in srgb, currentColor 12%, transparent); }
 .touch-player-transport .is-secondary { opacity: 0.7; }
-.touch-player-progress { padding: 8px 4px; }
-.touch-player-progress input[type=range] { top: 50%; height: 28px; transform: translateY(-50%); }
-.touch-player-progress [data-folium-part="progress.track"] { height: 3px; }
-/* The rail is part of the lower capsule edge. Its input extends upwards without moving the rail. */
-.touch-player-progress.is-compact { position: absolute; inset: auto 0 0; height: 12px; padding: 0; }
+@keyframes touch-player-controls-in { from { opacity: 0; } to { opacity: 1; } }
+.touch-player-progress { height: 26px; flex: none; padding-inline: 4px; display: flex; align-items: center; animation: touch-player-controls-in 220ms ease-out both; }
+.folia-touch-player-capsule input[type=range] { top: 50%; height: 28px; transform: translateY(-50%); }
+/* Only the straight segment of the capsule's lower edge carries compact progress. */
+.touch-player-progress.is-compact { position: absolute; inset: auto 30px 0; height: 12px; padding: 0; animation: none; }
 .touch-player-progress.is-compact [data-folium-part="progress.root"] { position: absolute; inset: auto 0 0; gap: 0; }
 .touch-player-progress.is-compact [data-folium-part="progress.time"],
 .touch-player-progress.is-compact [data-folium-part="progress.duration"] { display: none; }
 .touch-player-progress.is-compact [data-folium-part="progress.track"] { height: 2px; border-radius: 0; }
-
 .touch-player-progress.is-compact input[type=range] { top: auto; bottom: 0; height: 12px; transform: none; }
-.touch-player-progress-disclosure { width: 100%; height: 44px; padding: 0; border: 0; background: none; color: inherit; }
-.folia-touch-player-capsule[data-touch-style="progress"][data-folia-player-bar-expanded="false"] { padding: 0 8px; background: transparent; border-color: transparent; box-shadow: none; backdrop-filter: none; border-radius: 8px; }
 .folia-touch-player-capsule[data-touch-style="text"][data-folia-player-bar-expanded="false"] .touch-player-identity { padding-left: 8px; }
-/* Wide expansion is one row; short viewports fall back to the same accessible two-row controls. */
-@container (min-width: 470px) {
-    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-bar { flex-direction: row; align-items: center; gap: 2px; min-height: 44px; }
-    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-heading { display: contents; }
-    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-transport { display: flex; gap: 0; padding: 0; order: 1; }
-    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-transport .touch-player-action { width: 44px; height: 44px; }
-    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-now-playing { order: 2; }
-    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-collapse { order: 3; }
-    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-progress { position: absolute; inset: auto 0 0; padding: 0; height: 12px; }
-    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-progress [data-folium-part="progress.root"] { position: absolute; inset: auto 0 0; gap: 0; }
-    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-progress [data-folium-part="progress.time"],
-    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-progress [data-folium-part="progress.duration"] { display: none; }
-    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-progress [data-folium-part="progress.track"] { height: 2px; border-radius: 0; }
-    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-progress input[type=range] { top: auto; bottom: 0; height: 12px; transform: none; }
+/* Progress-only reuses CollapsedView, including its glass, padding, time labels and original width. */
+.folia-touch-player-capsule[data-touch-style="progress"][data-folia-player-bar-expanded="false"] { width: min(100%, calc(80% + var(--folium-player-bar-extra, 0px) * .2)); height: 50px; padding: 8px 16px; border-radius: 999px; }
+@media (min-width: 768px) {
+    .folia-touch-player-capsule[data-touch-style="progress"][data-folia-player-bar-expanded="false"] { width: min(100%, calc(60% + var(--folium-player-bar-extra, 0px) * .4)); }
 }
-@container (max-width: 300px) {
+/* A stable viewport query prevents the temporary vertical layout during horizontal disclosure. */
+@media (min-width: 494px) {
+    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] { height: 94px; }
+    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-bar { display: grid; grid-template-columns: minmax(52px, 1fr) auto; column-gap: 8px; }
+    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-heading { grid-row: 1; grid-column: 1; overflow: hidden; }
+    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-progress { grid-row: 2; grid-column: 1 / -1; }
+    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-transport { grid-row: 1; grid-column: 2; display: flex; gap: 0; height: 44px; }
+    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-transport .touch-player-action { width: 44px; height: 44px; }
+}
+@media (max-width: 323px) {
     .touch-player-transport { grid-template-columns: 44px 44px 48px 44px 44px; gap: 2px; }
 }
 @media (prefers-reduced-motion: reduce) {
-    .folia-touch-player-host { transition: none; }
-    .touch-player-text[data-overflow="true"] > span { animation: none; }
-}
-
-.touch-player-edge { display: none; position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.folia-touch-player-capsule[data-folia-player-bar-expanded="false"]:not([data-touch-style="progress"]) .touch-player-edge { display: block; }
-.folia-touch-player-capsule[data-folia-player-bar-expanded="false"]:not([data-touch-style="progress"]) .touch-player-progress [data-folium-part="progress.track"] { background: transparent; }
-.folia-touch-player-capsule[data-folia-player-bar-expanded="false"]:not([data-touch-style="progress"]) .touch-player-progress [data-folium-part="progress.fill"] { visibility: hidden; }
-@container (min-width: 470px) {
-    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-edge { display: block; }
-    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-progress [data-folium-part="progress.track"] { background: transparent; }
-    .folia-touch-player-capsule[data-touch-expansion="wide"][data-folia-player-bar-expanded="true"] .touch-player-progress [data-folium-part="progress.fill"] { visibility: hidden; }
+    .folia-touch-player-host, .folia-touch-player-capsule { transition: none; }
+    .touch-player-text[data-overflow="true"] > span, .touch-player-transport, .touch-player-progress { animation: none; }
 }
 [data-folia-player-chrome][aria-hidden="true"] .touch-player-text > span { animation-play-state: paused; }

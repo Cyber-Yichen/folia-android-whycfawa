@@ -131,22 +131,45 @@ test('expanded queue card fits above the compact transport in landscape', async 
 });
 
 
-test('narrow edge progress expands horizontally and opens now playing', async ({ page }) => {
+test('straight bottom rail and horizontal disclosure share one stable layout', async ({ page }) => {
     await page.goto('/dev-probe.html?probe=androidTouchPlayback');
     const bar = page.locator('[data-folia-player-bar-touch]');
     await expect.poll(async () => (await bar.boundingBox())!.width).toBeCloseTo(260, 0);
-    const cover = (await page.locator('.touch-player-cover').boundingBox())!;
     const compact = (await bar.boundingBox())!;
-    expect(cover.x - compact.x).toBeCloseTo(cover.y - compact.y, 0);
-    expect(compact.y + compact.height - cover.y - cover.height).toBeCloseTo(cover.y - compact.y, 0);
     const rail = (await bar.locator('[data-folium-part="progress.track"]').boundingBox())!;
     expect(compact.y + compact.height - rail.y - rail.height).toBeLessThanOrEqual(2);
+    expect(rail.x - compact.x).toBeCloseTo(31, 0);
+    expect(compact.x + compact.width - rail.x - rail.width).toBeCloseTo(31, 0);
+    await expect(bar.locator('.touch-player-edge')).toHaveCount(0);
     await expect(page.locator('.touch-player-title')).toHaveAttribute('data-overflow', 'true');
-    await page.getByRole('button', { name: 'Expand player controls' }).click();
+    const frames = await bar.evaluate(async element => {
+        (element.querySelector('.touch-player-identity') as HTMLButtonElement).click();
+        const frames = [];
+        for (let index = 0; index < 25; index++) {
+            await new Promise(resolve => requestAnimationFrame(resolve));
+            const box = element.getBoundingClientRect();
+            const heading = element.querySelector('.touch-player-heading')!.getBoundingClientRect();
+            const transport = element.querySelector('.touch-player-transport')!.getBoundingClientRect();
+            frames.push({ width: box.width, height: box.height, rowDelta: transport.y - heading.y,
+                timelineDelta: element.querySelector('[data-folia-player-bar-progress]')!.getBoundingClientRect().y - heading.bottom,
+                transform: getComputedStyle(element.firstElementChild!).transform });
+        }
+        return frames;
+    });
+    expect(frames.every(frame => Math.abs(frame.rowDelta) < 1 && frame.timelineDelta >= 5 && frame.transform === 'none')).toBe(true);
+    expect(frames.some(frame => frame.width > 270 && frame.width < 500 && frame.height > compact.height)).toBe(true);
     await expect.poll(async () => (await bar.boundingBox())!.width).toBeCloseTo(520, 0);
-    expect((await bar.boundingBox())!.height).toBeCloseTo(compact.height, 0);
+    await expect.poll(async () => (await bar.boundingBox())!.height).toBeCloseTo(94, 0);
+    const time = bar.locator('[data-folium-part="progress.time"]');
+    const total = bar.locator('[data-folium-part="progress.duration"]');
+    await expect(time).toBeVisible();
+    await expect(time).toHaveText('00:42');
+    await expect(total).toBeVisible();
+    await expect(total).toHaveText('03:20');
+    expect((await time.boundingBox())!.y).toBeGreaterThan((await bar.locator('.touch-player-heading').boundingBox())!.y + 44);
+    await expect(bar.locator('.touch-player-now-playing, .touch-player-collapse')).toHaveCount(0);
     await bar.locator('input[type=range]').fill('100');
-    await expect(bar.locator('.touch-player-edge path:last-child')).toHaveCSS('stroke-dashoffset', '0.5px');
+    await expect(time).toHaveText('01:40');
     await page.getByRole('button', { name: 'Now playing', exact: true }).click();
     await expect(page.locator('[data-navigated]')).toHaveAttribute('data-navigated', '1');
     await expect(page.locator('[data-play]')).toHaveAttribute('data-play', '0');
@@ -158,9 +181,14 @@ for (const compactStyle of ['text', 'progress']) {
         await page.goto('/dev-probe.html?probe=androidTouchPlayback');
         const bar = page.locator('[data-folia-player-bar-touch]');
         await expect(bar.locator('.touch-player-cover')).toHaveCount(0);
-        await page.getByRole('button', { name: 'Expand player controls' }).click();
+        if (compactStyle === 'progress') {
+            await expect(bar.locator('[data-folium-part="progress.time"]')).toBeVisible();
+            await expect(bar.locator('[data-folium-part="progress.duration"]')).toHaveText('03:20');
+            expect((await bar.locator('[data-folium-part="progress.track"]').boundingBox())!.height).toBe(6);
+            await expect(bar.locator('[data-folia-player-bar-play]')).toHaveCount(0);
+            await bar.click({ position: { x: 8, y: 8 } });
+        } else await page.getByRole('button', { name: 'Expand player controls' }).click();
         await expect(bar).toHaveAttribute('data-folia-player-bar-expanded', 'true');
-        await expect(bar.locator('.touch-player-edge path:last-child')).toHaveCSS('stroke-dashoffset', '0.79px');
         await page.getByRole('button', { name: 'Now playing', exact: true }).click();
         await expect(page.locator('[data-navigated]')).toHaveAttribute('data-navigated', '1');
         const slider = bar.locator('input[type=range]');

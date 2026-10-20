@@ -10,8 +10,6 @@ import { FoliumControlButtonSlot, FoliumProgressLayers, useFoliumProgressContext
 
 interface ProgressBarProps {
     ariaLabel?: string;
-    /** Optional normalized SVG rail, updated with the same drag preview as the regular fill. */
-    progressPathRef?: React.RefObject<SVGPathElement | null>;
     currentTime: MotionValue<number>;
     duration: number;
     onSeek: (time: number) => void;
@@ -37,7 +35,6 @@ const formatTime = (time: number) => {
 const ProgressBar: React.FC<ProgressBarProps> = ({
     currentTime,
     ariaLabel,
-    progressPathRef,
     duration,
     onSeek,
     onSeekStart,
@@ -73,7 +70,6 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
         // honest option: the fraction is genuinely unknown until the denominator exists.
         if (progressRef.current && duration > 0) {
             const progress = Math.min(1, clampedValue / duration);
-            if (progressPathRef?.current) progressPathRef.current.style.strokeDashoffset = String(1 - progress);
             const hiddenPercent = ((1 - progress) * 100).toFixed(4);
             progressRef.current.style.clipPath = edgeStyle === 'square'
                 ? `inset(0 ${hiddenPercent}% 0 0)`
@@ -94,7 +90,7 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
             inputRef.current.value = clampedValue.toString();
             lastInputSecondRef.current = displayedSecond;
         }
-    }, [duration, edgeStyle, progressPathRef]);
+    }, [duration, edgeStyle]);
 
     useLayoutEffect(() => {
         updateUI(currentTime.get(), true);

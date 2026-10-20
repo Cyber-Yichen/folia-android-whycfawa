@@ -364,6 +364,7 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
                     ${currentView === 'home'
                         ? 'max-w-[calc(100vw-120px)] md:max-w-[min(calc(32rem_+_var(--folium-player-bar-extra,0px)),calc(100vw-120px))]'
                         : 'max-w-[min(calc(32rem_+_var(--folium-player-bar-extra,0px)),100vw)] px-4'}`}
+                data-touch-style={touchControls ? touchAppearance.compactStyle : undefined}
                 data-touch-expanded={touchControls ? showExpanded : undefined}
                 data-touch-expansion={touchControls ? touchAppearance.expansion : undefined}
                 style={{ bottom: bottomBarBottomPx }}
@@ -393,7 +394,7 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
                     }}
                 >
                     <motion.div
-                        layout
+                        layout={!touchControls}
                         transition={{ layout: CONTROL_LAYOUT_SPRING }}
                         onClick={handleClick}
                         // 用原生 pointer 事件而不是 framer-motion 的 drag：位移已经由 playerBottomBarLiveOffset
@@ -417,12 +418,17 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
                             ${showExpanded ? `p-3 ${glassBgExpanded} w-full` : `px-4 py-2 ${glassBgCollapsed} ${COLLAPSED_WIDTH_CLASS}`}`}
                     >
                         <motion.div
-                            layout
+                            layout={!touchControls}
                             transition={{ layout: CONTROL_LAYOUT_SPRING }}
                             // 定位模式下 seek 和所有按钮一起失效：这时胶囊是个被拖的物体，不是控件。
                             className={`w-full ${isPositioning ? 'pointer-events-none select-none' : ''}`}
                         >
-                            {touchControls ? <TouchPlayerBar
+                            {touchControls && !showExpanded && touchAppearance.compactStyle === 'progress' ? <CollapsedView
+                                currentTime={currentTime} duration={duration} onSeek={onSeek}
+                                onSeekStart={disclosure.seekStart} onSeekEnd={disclosure.seekEnd}
+                                primaryColor={primaryColor} secondaryColor={secondaryColor} trackColor={trackColor}
+                                controlsDisabled={controlsDisabled || isPositioning || !canTogglePlay}
+                            /> : touchControls ? <TouchPlayerBar
                                 currentSong={currentSong} artistName={artistName} coverUrl={coverUrl}
                                 playerState={playerState} currentTime={currentTime} duration={duration}
                                 onSeek={onSeek} onSeekStart={disclosure.seekStart} onSeekEnd={disclosure.seekEnd}
@@ -430,7 +436,7 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
                                 controlsDisabled={controlsDisabled || isPositioning} trackNavigation={trackNavigation}
                                 slotPrimary={slotPrimary} slotSecondary={slotSecondary} slotContext={resolvedSlotContext}
                                 primaryColor={primaryColor} secondaryColor={secondaryColor} isDaylight={isDaylight}
-                                expanded={showExpanded} onExpand={disclosure.expand} onCollapse={disclosure.collapse}
+                                expanded={showExpanded} onExpand={disclosure.expand}
                                 appearance={touchAppearance} onNowPlaying={() => {
                                     if (currentView === 'lattice' && onFocusLatticeCurrentSong) onFocusLatticeCurrentSong();
                                     else onNavigateToPlayer();
@@ -647,6 +653,8 @@ interface CollapsedViewProps {
     currentTime: MotionValue<number>;
     duration: number;
     onSeek: (time: number) => void;
+    onSeekStart?: () => void;
+    onSeekEnd?: () => void;
     primaryColor: string;
     secondaryColor: string;
     trackColor?: string;
@@ -657,17 +665,21 @@ const CollapsedView: React.FC<CollapsedViewProps> = ({
     currentTime,
     duration,
     onSeek,
+    onSeekStart,
+    onSeekEnd,
     primaryColor,
     secondaryColor,
     trackColor,
     controlsDisabled = false,
 }) => {
     return (
-        <div className="flex items-center w-full justify-center h-8 px-4">
+        <div className="flex items-center w-full justify-center h-8 px-4" data-folia-player-bar-progress>
             <ProgressBar
                 currentTime={currentTime}
                 duration={duration}
                 onSeek={onSeek}
+                onSeekStart={onSeekStart}
+                onSeekEnd={onSeekEnd}
                 primaryColor={primaryColor}
                 secondaryColor={secondaryColor}
                 trackColor={trackColor}

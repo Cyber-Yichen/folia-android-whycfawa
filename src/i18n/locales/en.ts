@@ -1648,7 +1648,6 @@ export default {
     "touchPlayerExpansion_tall": "Vertically",
     "touchPlayerNowPlaying": "Now playing",
     "playerControlsExpand": "Expand player controls",
-    "playerControlsCollapse": "Collapse player controls",
     "playerControlsPrevious": "Previous track",
     "playerControlsNext": "Next track",
 

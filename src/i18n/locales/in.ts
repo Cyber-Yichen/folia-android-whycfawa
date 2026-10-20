@@ -1641,7 +1641,6 @@ export default {
     "touchPlayerExpansion_tall": "Vertikal",
     "touchPlayerNowPlaying": "Sedang diputar",
     "playerControlsExpand": "Perluas kontrol pemutar",
-    "playerControlsCollapse": "Ciutkan kontrol pemutar",
     "playerControlsPrevious": "Lagu sebelumnya",
     "playerControlsNext": "Lagu berikutnya",
 
