@@ -1758,7 +1758,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                                                 themeGenerationSource={themeGenerationSource}
                                                 onChangeThemeGenerationSource={onChangeThemeGenerationSource}
                                                 aiApiKeyStatus={aiApiKeyStatus}
-                                                onOpenAiSettings={() => useSettingsModalStore.getState().openSettings('options', 'desktop', null, 'electronSettings')}
+                                                onOpenAiSettings={() => useSettingsModalStore.getState().openSettings('options', window.electron ? 'desktop' : 'appearance', null, window.electron ? 'electronSettings' : 'aiProvider')}
                                                 onToggleTransparentPlayerBackground={resolvedToggleTransparentPlayerBackground}
                                                 onToggleAutoHidePlayerChrome={onToggleAutoHidePlayerChrome}
                                                 onToggleAutoHideCursorWithPlayerChrome={onToggleAutoHideCursorWithPlayerChrome}

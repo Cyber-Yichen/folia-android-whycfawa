@@ -83,6 +83,7 @@ test('custom cache ceiling applies only after confirmation', async ({ page }) =>
 test('AI presets select models and fall back to manual entry', async ({ page }) => {
     await page.route('https://api.deepseek.com/v1/models', route => route.fulfill({ json: { data: [{ id: 'test-chat' }, { id: 'test-reasoner' }] } }));
     await page.goto('/dev-probe.html?probe=androidAiSettings');
+    await page.getByRole('button', { name: 'AI Theme', exact: true }).click();
     await page.getByRole('combobox', { name: 'AI provider' }).click();
     await page.getByRole('option', { name: 'DeepSeek', exact: true }).click();
     await expect(page.getByLabel('Compatible API URL')).toHaveCount(0);
