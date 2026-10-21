@@ -45,6 +45,7 @@ export const createOverlayWordNodes = (): OverlayWordNodes => {
         glyphSignature: '',
         written: null,
         glyphShadows: [],
+        glyphOpacities: [],
         frame: -1,
     };
 };
@@ -90,6 +91,7 @@ export const syncOverlayGlyphSpans = (nodes: OverlayWordNodes, texts: string[]) 
         return span;
     });
     nodes.glyphShadows = [];
+    nodes.glyphOpacities = [];
     nodes.glyphSignature = glyphSignature;
 };
 

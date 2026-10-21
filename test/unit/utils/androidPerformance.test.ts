@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { androidRenderResolution, useAndroidPerformanceStore } from '@/stores/useAndroidPerformanceStore';
+import { androidGeometricBudget, androidRenderResolution, useAndroidPerformanceStore } from '@/stores/useAndroidPerformanceStore';
 import { parseVisualizerFrameRate } from '@/utils/frameRateLimiter';
 import { compressConfig, decompressConfig } from '@/utils/appearanceCodec';
 
@@ -25,6 +25,16 @@ describe('Android rendering preferences', () => {
         useAndroidPerformanceStore.setState({ enabled: true });
         expect(androidRenderResolution(2, 1600, 900)).toBe(2);
         expect(parseVisualizerFrameRate(null)).toBe('off');
+    });
+    it('limits background animation density only inside the enabled native profile', () => {
+        vi.stubGlobal('window', { Capacitor: { getPlatform: () => 'android' } });
+        expect(androidGeometricBudget(15, 20)).toEqual({ shapes: 8, particles: 8 });
+        expect(androidGeometricBudget(4, 2)).toEqual({ shapes: 4, particles: 2 });
+        useAndroidPerformanceStore.setState({ enabled: false });
+        expect(androidGeometricBudget(15, 20)).toEqual({ shapes: 15, particles: 20 });
+        vi.stubGlobal('window', {});
+        useAndroidPerformanceStore.setState({ enabled: true });
+        expect(androidGeometricBudget(15, 20)).toEqual({ shapes: 15, particles: 20 });
     });
     it('round-trips both performance preferences in shortcodes and JSON', () => {
         for (const enabled of [true, false]) {

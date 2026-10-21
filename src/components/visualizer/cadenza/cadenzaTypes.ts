@@ -86,6 +86,7 @@ export interface OverlayWordNodes {
     written: OverlayWordFrame | null;
     /** The text-shadow each glyph span currently has, index-aligned with `glyphSpans`. */
     glyphShadows: string[];
+    glyphOpacities: string[];
     /** The draw-loop frame that last used these nodes; older ones are removed at the end of a frame. */
     frame: number;
 }

@@ -21,3 +21,10 @@ export const androidRenderResolution = (resolution: number, width = 0, height = 
     const pixelCap = width > 0 && height > 0 ? Math.sqrt(960 * 540 / (width * height)) : 1;
     return Math.min(resolution, 1, pixelCap);
 };
+
+// Bound continuously animated background elements without changing the independent FPS preference.
+export const androidGeometricBudget = (shapes: number, particles: number) => (
+    isAndroidPerformanceEnabled()
+        ? { shapes: Math.min(shapes, 8), particles: Math.min(particles, 8) }
+        : { shapes, particles }
+);
