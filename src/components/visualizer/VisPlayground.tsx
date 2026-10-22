@@ -1,3 +1,4 @@
+import VisPlaygroundSampleStage from './VisPlaygroundSampleStage';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, useMotionValue, useMotionValueEvent } from 'framer-motion';
 import { ChevronLeft, Loader2, Pause, Play, Search, Sparkles, Upload, X } from 'lucide-react';
@@ -58,6 +59,8 @@ import {
 import { getVisualizerModeLabel, getVisualizerRegistryEntry, getVisualizerScopedSeed } from './registry';
 import VisPlaygroundPreviewHotspots, { type VisPlaygroundEditSection } from './VisPlaygroundPreviewHotspots';
 import VisPlaygroundSettingsPanel from './VisPlaygroundSettingsPanel';
+import VisPlaygroundStylePicker from './VisPlaygroundStylePicker';
+import './VisPlayground.css';
 import type { VisualizerBackgroundActions, VisualizerBackgroundConfig } from './backgrounds/definition';
 import { useVisPlaygroundPreviewPlayback } from './useVisPlaygroundPreviewPlayback';
 
@@ -297,7 +300,7 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
     theme,
     isDaylight,
     visualizerMode,
-    initialEditSection = 'common',
+    initialEditSection = 'visualizer',
     visualizerOpacity = 1,
     staticMode = false,
     backgroundConfig,
@@ -1148,7 +1151,7 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.22, ease: 'easeOut' }}
-            className="fixed inset-0 z-[140] backdrop-blur-xl p-3 sm:p-5"
+            className="vis-playground-overlay fixed inset-0 z-[140] backdrop-blur-xl"
             style={{ backgroundColor: overlayBackground }}
             onClick={onClose}
         >
@@ -1158,14 +1161,18 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
                 exit={{ opacity: 0, y: 18, scale: 0.98 }}
                 transition={{ duration: 0.2, ease: 'easeOut' }}
                 onClick={(event) => event.stopPropagation()}
+                role="dialog"
+                aria-modal="true"
+                aria-label={t('options.lyricsStyleSettings')}
                 data-ponder="vis-playground"
                 className={`mx-auto flex h-full max-w-[1600px] flex-col overflow-hidden rounded-[32px] border ${borderColor} ${glassBg} shadow-[0_24px_80px_rgba(0,0,0,0.28)]`}
             >
-                <div className="flex items-center justify-between border-b border-white/10 px-4 py-4 sm:px-6">
+                <div className="vis-playground-header flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3 sm:px-6">
                     <div className="flex items-center gap-3 min-w-0">
                         <button
                             type="button"
                             onClick={onClose}
+                            aria-label={t('ui.back')}
                             className="h-10 w-10 rounded-full border border-white/10 bg-white/5 flex items-center justify-center transition-colors hover:bg-white/10"
                             style={{ color: 'var(--text-primary)' }}
                         >
@@ -1179,8 +1186,9 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
                     </div>
                 </div>
 
-                <div className="grid min-h-0 flex-1 gap-4 p-4 sm:p-6 lg:grid-cols-[minmax(0,1.25fr)_360px]">
-                    <div className="relative min-h-[320px] overflow-hidden rounded-[28px] border border-white/10 bg-black/20">
+                <div className="vis-playground-layout">
+                    <div className="vis-playground-stage custom-scrollbar">
+                    <div data-testid="visualizer-preview" className="vis-playground-preview relative overflow-hidden rounded-2xl border border-white/10 bg-black/20">
                         <div className="absolute left-4 top-4 z-20 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-3 py-1.5 text-xs uppercase tracking-[0.22em] backdrop-blur-md" style={{ color: 'rgba(255,255,255,0.78)' }}>
                             <Sparkles size={13} />
                             <span>{t('ui.livePreview')}</span>
@@ -1189,7 +1197,7 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
                             {modeLabel}
                         </div>
 
-                        <div className="absolute inset-0">
+                        <VisPlaygroundSampleStage>
                             <VisualizerRenderer
                                 mode={visualizerMode}
                                 currentTime={currentTime}
@@ -1224,7 +1232,7 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
                                 monetPortraitImage={monetPortraitImage}
                                 seed={getVisualizerScopedSeed(visualizerMode, 'vis-playground')}
                             />
-                        </div>
+                        </VisPlaygroundSampleStage>
                         <VisPlaygroundPreviewHotspots
                             activeSection={activeEditSection}
                             onSectionChange={setActiveEditSection}
@@ -1244,7 +1252,16 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
                             {isPreviewPaused ? <Play size={17} fill="currentColor" /> : <Pause size={17} fill="currentColor" />}
                         </button>
                     </div>
-
+                    <VisPlaygroundStylePicker
+                        value={visualizerMode}
+                        onChange={(mode) => {
+                            if (mode !== '__random__') onVisualizerModeChange?.(mode);
+                            setActiveEditSection('visualizer');
+                        }}
+                        theme={previewTheme}
+                        t={t}
+                    />
+                    </div>
                     <VisPlaygroundSettingsPanel
                         activeSection={activeEditSection}
                         onSectionChange={setActiveEditSection}
@@ -1253,7 +1270,6 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
                         theme={previewTheme}
                         visualizerMode={visualizerMode}
                         visualizerEntry={visualizerEntry}
-                        onVisualizerModeChange={onVisualizerModeChange}
                         onResetVisualizerTuning={handleResetVisualizerTuning}
                         controlCardBg={controlCardBg}
                         rangeInputClass={rangeInputClass}

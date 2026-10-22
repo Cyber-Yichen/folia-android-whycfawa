@@ -1,6 +1,7 @@
 import type React from 'react';
 import type { MotionValue } from 'framer-motion';
 import type FloatingPlayerControls from '../../FloatingPlayerControls';
+import { isAndroidNativeRuntime } from '../../../utils/platform';
 import type SearchWorkspace from '../search/SearchWorkspace';
 import type DevDebugOverlay from '../../DevDebugOverlay';
 import type MemoryMonitorWindow from '../../debug/MemoryMonitorWindow';
@@ -192,7 +193,7 @@ export const buildAppOverlaysModel = ({
     // Gated on stageTrackPillOnScreen (computed in App: display mode plus which page allows the
     // card) rather than on the view directly, so the countdown that feeds the "up next" preview
     // and the card that shows it can never disagree about where the card lives.
-    nowPlayingToast: stageTrackPillOnScreen && currentSong && !immersivePlayerChromeHidden
+    nowPlayingToast: stageTrackPillOnScreen && currentSong && (!immersivePlayerChromeHidden || stageIsNextUp)
         ? {
             song: {
                 title: currentSong.name || '',
@@ -258,6 +259,8 @@ export const buildAppOverlaysModel = ({
     floatingControls: currentSong
         ? {
             currentSong,
+            coverUrl,
+            artistName: getSongArtistLabel(currentSong),
             playerState,
             currentTime,
             lyricCurrentTime,
@@ -293,7 +296,7 @@ export const buildAppOverlaysModel = ({
             secondaryColor: 'var(--text-secondary)',
             theme,
             isDaylight,
-            isHidden: currentView === 'player' && isPlayerChromeHidden,
+            isHidden: (currentView === 'player' || (isAndroidNativeRuntime() && currentView === 'lattice')) && isPlayerChromeHidden,
             hideControlBar: shouldHidePlayerProgressBar,
             slotPrimary: playerControlSlotPrimary,
             slotSecondary: playerControlSlotSecondary,

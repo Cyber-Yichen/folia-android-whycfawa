@@ -6,7 +6,7 @@ import type { DualTheme } from '../types';
 import { sanitizeDualTheme } from './themeSanitizer';
 import { applyStoredAnimationIntensityToDualTheme } from './themePreferences';
 import { parseAiThemeJsonInput } from '../utils/aiThemePrompts';
-import { createAiFetch } from './aiNativeFetch';
+import { createAiCompletionFetch } from './ai/aiCompletionFetch';
 import { readAiSettings } from './aiSettings';
 import {
     recordAiThemeAttempt,
@@ -141,7 +141,7 @@ const requestGeminiThemeJson = async (systemPrompt: string, sourcePrompt: string
     const apiKey = settings.geminiApiKey.trim();
     if (!apiKey) throw new Error('GEMINI_API_KEY is not configured');
 
-    const response = await createAiFetch()(GEMINI_THEME_ENDPOINT, {
+    const response = await createAiCompletionFetch()(GEMINI_THEME_ENDPOINT, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -202,7 +202,7 @@ const requestOpenAiThemeJson = async (systemPrompt: string, sourcePrompt: string
                 Authorization: `Bearer ${apiKey}`,
             },
         },
-        fetchImpl: createAiFetch(),
+        fetchImpl: createAiCompletionFetch(),
     });
 
     if (!response.ok) {
@@ -258,7 +258,7 @@ export const generateThemeWithConfiguredAi = async (
     const provider = settings.provider;
     const model = provider === 'openai'
         ? resolveOpenAiModel(normalizeChatCompletionsUrl(settings.openaiApiUrl), settings.openaiApiModel)
-        : 'gemini-3-flash-preview';
+        : settings.geminiModel;
     const trigger: AiThemeTrigger = options?.trigger ?? 'unknown';
     const startedAt = Date.now();
     let stage: AiThemeStage = 'request';
@@ -354,7 +354,7 @@ export const testConfiguredAiConnection = async (): Promise<AiConnectionTestResu
                         Authorization: `Bearer ${apiKey}`,
                     },
                 },
-                fetchImpl: createAiFetch(),
+                fetchImpl: createAiCompletionFetch(),
             });
             const durationMs = Date.now() - startedAt;
             if (!response.ok) {
@@ -382,7 +382,7 @@ export const testConfiguredAiConnection = async (): Promise<AiConnectionTestResu
         if (!apiKey) {
             return { ok: false, durationMs: 0, error: 'GEMINI_API_KEY is not configured' };
         }
-        const response = await createAiFetch()(GEMINI_THEME_ENDPOINT, {
+        const response = await createAiCompletionFetch()(GEMINI_THEME_ENDPOINT, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -397,7 +397,7 @@ export const testConfiguredAiConnection = async (): Promise<AiConnectionTestResu
                 ok: false,
                 durationMs,
                 status: response.status,
-                model: 'gemini-3-flash-preview',
+                model: settings.geminiModel,
                 error: detail || `HTTP ${response.status}`,
             };
         }
@@ -413,7 +413,7 @@ export const testConfiguredAiConnection = async (): Promise<AiConnectionTestResu
             ok: true,
             durationMs,
             status: response.status,
-            model: 'gemini-3-flash-preview',
+            model: settings.geminiModel,
             reply: reply.trim().slice(0, 200),
         };
     } catch (error) {

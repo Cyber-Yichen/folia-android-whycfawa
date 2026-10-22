@@ -1,0 +1,13 @@
+/* src/styles/androidPerformance.css */
+/* Keep the modal hierarchy while reducing large backdrop filter kernels. */
+html[data-folia-android-performance="true"] :is(.backdrop-blur-xl, .backdrop-blur-2xl, .backdrop-blur-3xl) {
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}
+
+html[data-folia-android-immersive="hidden"] .lattice-queue-root :is(.lattice-back, .lattice-tools) {
+    opacity: 0; visibility: hidden; pointer-events: none;
+}
+html[data-folia-android-immersive="hidden"][data-folia-android-hide-transport="true"] .lattice-queue-root .lattice-chrome {
+    opacity: 0; visibility: hidden; pointer-events: none;
+}

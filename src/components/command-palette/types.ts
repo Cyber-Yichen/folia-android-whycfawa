@@ -216,6 +216,8 @@ export type CommandPalettePanelContext = {
 };
 
 export type CommandPaletteSettingsContext = {
+    toggleAndroidPerformance: () => void;
+    toggleHideCommandPaletteButton: () => void;
     openSettings: (
         initialTab?: SettingsModalInitialTab,
         initialSubview?: SettingsSubviewId | null,
@@ -256,6 +258,7 @@ export type CommandPaletteSettingsContext = {
     toggleLibraryWallStackEdges: () => void;
     /** bravais info strip always see-through (useLibraryWallLookStore.seamClear); read live. */
     libraryWallSeamClear: () => boolean;
+    canToggleLibraryWallSeamClear?: () => boolean;
     toggleLibraryWallSeamClear: () => void;
     /** bravais solid info strip preset (useLibraryWallLookStore.seamStyle); read live. Ignored while the strip is see-through. */
     libraryWallSeamStyle: () => LibraryWallSeamStyle;

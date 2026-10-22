@@ -82,6 +82,8 @@ const createContext = (overrides: CommandPaletteContextOverrides = {}): CommandP
             setIsPanelOpen: vi.fn(),
         },
         settings: {
+            toggleAndroidPerformance: vi.fn(),
+            toggleHideCommandPaletteButton: vi.fn(),
             toggleRememberHomeCardPosition: vi.fn(),
             openSettings: vi.fn(),
             lyricStaffPolicy: 'smart' as const,

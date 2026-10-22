@@ -1,3 +1,5 @@
+import { isAndroidNativeRuntime } from '../../utils/platform';
+import { isBudgetedCacheKey, putAndroidCacheEntry, touchAndroidCacheEntry } from './androidCacheBudget';
 import type { Table } from 'dexie';
 import {
   appDatabase,
@@ -63,13 +65,22 @@ const movedOutOfApiCache = (key: string): boolean =>
 const getTable = (name: CacheTableName): Table<StoredCacheEntry, string> => appDatabase.table(name);
 
 export const putCacheEntry = async (key: string, data: unknown): Promise<void> => {
+  if (isAndroidNativeRuntime() && isBudgetedCacheKey(key)) {
+    await putAndroidCacheEntry(getCacheTableName(key), key, data);
+    return;
+  }
   await getTable(getCacheTableName(key)).put({ key, data, timestamp: Date.now() });
 };
 
 export const readCacheEntry = async <T>(key: string): Promise<T | null> => {
   const tableName = getCacheTableName(key);
   const entry = await getTable(tableName).get(key);
-  if (entry) return entry.data as T;
+  if (entry) {
+    if (isAndroidNativeRuntime() && isBudgetedCacheKey(key)) {
+      void touchAndroidCacheEntry(key).catch(error => console.warn('[CacheBudget] Cache access update failed', error));
+    }
+    return entry.data as T;
+  }
 
   // Found where it used to live and moved on the way past. That is the whole migration: no version
   // bump, no startup sweep, and a key nobody reads again is still cleared with its category like
@@ -78,6 +89,11 @@ export const readCacheEntry = async <T>(key: string): Promise<T | null> => {
   const legacy = await appDatabase.api_cache.get(key);
   if (!legacy) return null;
 
+  if (isAndroidNativeRuntime() && isBudgetedCacheKey(key)) {
+    await putCacheEntry(key, legacy.data);
+    await appDatabase.api_cache.delete(key);
+    return legacy.data as T;
+  }
   const table = getTable(tableName);
   await appDatabase.transaction('rw', table, appDatabase.api_cache, async () => {
     await table.put({ ...legacy, timestamp: Date.now() });

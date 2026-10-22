@@ -17,6 +17,7 @@ const ACTIVITY_EVENTS = ['pointerdown', 'pointermove', 'touchstart', 'keydown', 
 
 const BottomCommandPaletteButton: React.FC = () => {
     const { t } = useTranslation();
+    const hidden = usePlayerChromeSettingsStore(state => state.hideCommandPaletteButton);
     const autoHide = usePlayerChromeSettingsStore(state => state.autoHideCommandPaletteButton);
     // 全沉浸模式：强制隐藏命令面板按钮。关闭后按钮回到 autoHide 决定的状态；
     // 如果 autoHide 本来就是开的，则保持自动隐藏，不会被强制常显。
@@ -25,7 +26,7 @@ const BottomCommandPaletteButton: React.FC = () => {
     const currentView = useAppViewStore(state => state.view);
     // 全沉浸只在播放视图收起这颗按钮；歌单、歌曲浏览界面照旧显示。触摸唤回时
     // immersiveChromeHidden 变为 false，这颗按钮也一起回来。
-    const immersiveActiveHere = immersiveModeEnabled && currentView === 'player' && immersiveChromeHidden;
+    const immersiveActiveHere = immersiveModeEnabled && (currentView === 'player' || currentView === 'lattice') && immersiveChromeHidden;
     const paletteOpen = useAppViewStore(state => state.isCommandFilterOpen);
     const [visible, setVisible] = useState(true);
 
@@ -36,7 +37,7 @@ const BottomCommandPaletteButton: React.FC = () => {
     const hideTimerRef = useRef<number | null>(null);
 
     useEffect(() => {
-        if (!autoHide) {
+        if (!autoHide || hidden) {
             if (hideTimerRef.current !== null) {
                 window.clearTimeout(hideTimerRef.current);
                 hideTimerRef.current = null;
@@ -70,9 +71,9 @@ const BottomCommandPaletteButton: React.FC = () => {
                 hideTimerRef.current = null;
             }
         };
-    }, [autoHide]);
+    }, [autoHide, hidden]);
 
-    const shown = !immersiveActiveHere && !paletteOpen && (!autoHide || visible);
+    const shown = !hidden && !immersiveActiveHere && !paletteOpen && (!autoHide || visible);
 
     return (
         <button

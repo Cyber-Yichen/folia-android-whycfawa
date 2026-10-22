@@ -1,3 +1,5 @@
+import HomeTabIcon from '../../../../components/shared/HomeTabIcon';
+import { isAndroidNativeRuntime } from '../../../../utils/platform';
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Search, Loader2, Settings, PanelsTopLeft } from 'lucide-react';
@@ -411,7 +413,7 @@ export const Grid3D: React.FC<Grid3DProps> = (props) => {
                                                         transition={{ type: 'spring', stiffness: 460, damping: 36, mass: 0.9 }}
                                                     />
                                                 )}
-                                                <span className="relative z-10">{tab.label}</span>
+                                                <span className="relative z-10">{isAndroidNativeRuntime() ? <HomeTabIcon tab={tab.key} /> : tab.label}</span>
                                             </button>
                                         </span>
                                     );

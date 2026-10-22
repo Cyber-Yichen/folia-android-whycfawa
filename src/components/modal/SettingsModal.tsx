@@ -9,6 +9,7 @@ import { getNavidromeConfig, saveNavidromeConfig, clearNavidromeConfig, hashPass
 import { fetchNavidromeServerPreset, markNavidromeConfigAsPresetIfMatching, restoreNavidromeServerPreset } from '../../services/navidromeServerPreset';
 import { NavidromeConfig, NavidromeServerProfile } from '../../types/navidrome';
 import VisPlayground from '../visualizer/VisPlayground';
+import { isAndroidNativeRuntime } from '../../utils/platform';
 import { VISUALIZER_REGISTRY, getVisualizerModeLabel } from '../visualizer/registry';
 import ThemePark from './ThemePark';
 import LyricFilterSettingsModal from './LyricFilterSettingsModal';
@@ -1332,7 +1333,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
     const isBravaisSuiteActive = useIsBravaisLibraryActive();
     const settingsNavGroups = useMemo(
-        () => buildSettingsNavGroups(t, { isElectron, hasLibrarySuiteChoice: hasLibrarySuiteChoice(), isBravaisSuiteActive }),
+        () => buildSettingsNavGroups(t, { isElectron, supportsKeyboard: !isAndroidNativeRuntime(), hasLibrarySuiteChoice: hasLibrarySuiteChoice(), isBravaisSuiteActive }),
         [t, isElectron, isBravaisSuiteActive],
     );
     const activeSettingsNavItem = findSettingsNavItem(settingsNavGroups, activeSettingsSection);
@@ -1479,6 +1480,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                             */}
 
                                 {/* Shortcuts */}
+                                {!isAndroidNativeRuntime() && <>
                                 <div>
                                     <h3 className="text-sm font-bold uppercase tracking-wider opacity-50 mb-3 flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
                                         <Keyboard size={14} /> {t('help.keyboardShortcuts')}
@@ -1522,6 +1524,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
                                     </ul>
                                 </div>
+
+                                </>}
 
                                 {/* User Guide Button */}
                                 <div className="mt-6 flex flex-wrap justify-center gap-3">
@@ -1754,7 +1758,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                                                 themeGenerationSource={themeGenerationSource}
                                                 onChangeThemeGenerationSource={onChangeThemeGenerationSource}
                                                 aiApiKeyStatus={aiApiKeyStatus}
-                                                onOpenAiSettings={() => useSettingsModalStore.getState().openSettings('options', 'desktop', null, 'electronSettings')}
+                                                onOpenAiSettings={() => useSettingsModalStore.getState().openSettings('options', window.electron ? 'desktop' : 'appearance', null, window.electron ? 'electronSettings' : 'aiProvider')}
                                                 onToggleTransparentPlayerBackground={resolvedToggleTransparentPlayerBackground}
                                                 onToggleAutoHidePlayerChrome={onToggleAutoHidePlayerChrome}
                                                 onToggleAutoHideCursorWithPlayerChrome={onToggleAutoHideCursorWithPlayerChrome}
@@ -2023,7 +2027,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                         theme={theme}
                         isDaylight={isDaylight}
                         visualizerMode={visualizerMode}
-                        initialEditSection={initialVisualizerSection ?? 'common'}
+                        initialEditSection={initialVisualizerSection ?? 'visualizer'}
                         visualizerOpacity={visualizerOpacity}
                         staticMode={staticMode}
                         backgroundConfig={{

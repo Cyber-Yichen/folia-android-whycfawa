@@ -558,3 +558,30 @@
     background: var(--bravais-window-glow);
 }
 
+
+/* Folded Android home keeps one stable top-centre handle. */
+html[data-folia-android="true"] .bravais-seam-tab.is-home-tab {
+    top: max(8px, env(safe-area-inset-top)); left: 50%; right: auto;
+    transform: translateX(-50%); writing-mode: horizontal-tb;
+    min-height: 44px; max-height: none; padding: 10px 20px; border-radius: 16px;
+    animation: none;
+}
+@media (max-height: 600px) {
+    html[data-folia-android="true"] .bravais-seam-full { gap: 10px; overflow-y: auto; }
+    html[data-folia-android="true"] .bravais-seam .bravais-seam-title-area {
+        flex: none; min-height: 52px; gap: 0; margin: 0; padding: 6px 0; width: 100%;
+    }
+    html[data-folia-android="true"] .bravais-seam-title-area .bravais-seam-quote { display: none; }
+    html[data-folia-android="true"] .bravais-seam-title-area .bravais-seam-vtitle-wrap { flex: none; display: block; overflow: visible; }
+    html[data-folia-android="true"] .bravais-seam-title-area .bravais-seam-vtitle {
+        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+        overflow: hidden; writing-mode: horizontal-tb; font-size: 22px !important;
+        line-height: 1.35; white-space: normal; overflow-wrap: anywhere; text-align: left;
+    }
+}
+
+html[data-folia-android="true"] .bravais-tile:hover > .bravais-tile-face:not(.is-expanded) { transform: none; }
+html[data-folia-android="true"] .bravais-tile[data-touch-center] { z-index: 4; }
+html[data-folia-android="true"] .bravais-tile[data-touch-center] > .bravais-tile-face:not(.is-wall):not(.is-window):not(.is-expanded) {
+    transform: scale(var(--bravais-pop-x, 1), var(--bravais-pop-y, 1));
+}

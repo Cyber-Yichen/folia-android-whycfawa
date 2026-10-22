@@ -1,3 +1,5 @@
+import RandomPoolGroup from './random/RandomPoolGroup';
+import { useVisualizerSettingsStore } from '../../stores/useVisualizerSettingsStore';
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CaptionsOff, Focus, Monitor, PanelTop, RotateCcw, type LucideIcon } from 'lucide-react';
 import {
@@ -22,10 +24,9 @@ import {
 } from '../../types';
 import { colorWithAlpha } from './colorMix';
 import FontFallbackStackControl from './FontFallbackStackControl';
-import { VISUALIZER_REGISTRY, getVisualizerModeLabel, type VisualizerRegistryEntry } from './registry';
+import { type VisualizerRegistryEntry } from './registry';
 import { type VisPlaygroundEditSection } from './VisPlaygroundPreviewHotspots';
 import { FoliumTuningCards } from '@/mods/folium/registries/tunings';
-import { visualizersRegistry } from '@/mods/folium/registries/visualizers';
 import { backgroundsRegistry } from '@/mods/folium/registries/backgrounds';
 import { useFoliumRegistryEntries } from '@/mods/folium/registry';
 import { useMissingFoliumSelections } from '@/mods/folium/missingEntries';
@@ -73,7 +74,6 @@ interface VisPlaygroundSettingsPanelProps {
     theme: Theme;
     visualizerMode: VisualizerMode;
     visualizerEntry: VisualizerRegistryEntry;
-    onVisualizerModeChange?: (mode: VisualizerMode) => void;
     onResetVisualizerTuning?: () => void;
     controlCardBg: string;
     rangeInputClass: string;
@@ -175,10 +175,10 @@ const LYRICS_FONT_SIZE_AUTO_NOTICE_KEYS: Partial<Record<string, string>> = {
     lumiere: 'options.lumiereFontSizeAutoNotice',
 };
 
-const SECTION_OPTIONS: VisPlaygroundEditSection[] = ['common', 'background', 'visualizer', 'subtitle'];
+const SECTION_OPTIONS: VisPlaygroundEditSection[] = ['visualizer', 'background', 'common', 'subtitle'];
 
 const getSectionLabel = (section: VisPlaygroundEditSection, t: (key: string) => string) => {
-    if (section === 'common') return t('options.previewCommonSettings');
+    if (section === 'common') return t('options.previewFontSettings');
     if (section === 'background') return t('options.previewBackgroundSettings');
     if (section === 'subtitle') return t('options.previewSubtitleSettings');
     return t('options.previewVisualizerSettings');
@@ -276,10 +276,13 @@ const ResetSectionButton: React.FC<{
     label: string;
     onClick?: () => void;
     theme: Theme;
-}> = ({ label, onClick, theme }) => (
+    compact?: boolean;
+}> = ({ label, onClick, theme, compact }) => (
     <button
         type="button"
         onClick={onClick}
+        aria-label={label}
+        title={label}
         disabled={!onClick}
         className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-45"
         style={{
@@ -289,18 +292,17 @@ const ResetSectionButton: React.FC<{
         }}
     >
         <RotateCcw size={12} />
-        {label}
+        <span className={compact ? 'hidden lg:inline' : undefined}>{label}</span>
     </button>
 );
 
-const SectionTabs: React.FC<Pick<VisPlaygroundSettingsPanelProps, 'activeSection' | 'onSectionChange' | 't' | 'theme' | 'isDaylight'>> = ({
+const SectionTabs: React.FC<Pick<VisPlaygroundSettingsPanelProps, 'activeSection' | 'onSectionChange' | 't' | 'theme'>> = ({
     activeSection,
     onSectionChange,
     t,
     theme,
-    isDaylight,
 }) => (
-    <div className="inline-flex w-fit items-center gap-1 rounded-full p-1" style={{ backgroundColor: colorWithAlpha(theme.backgroundColor, isDaylight ? 0.34 : 0.52) }}>
+    <div className="vis-playground-tabs min-w-0 flex-1 flex items-center gap-1 border-b" role="group" aria-label={t('options.lyricsStyleSettings')} style={{ borderColor: colorWithAlpha(theme.secondaryColor, 0.16) }}>
         {SECTION_OPTIONS.map(section => {
             const active = activeSection === section;
             return (
@@ -308,9 +310,10 @@ const SectionTabs: React.FC<Pick<VisPlaygroundSettingsPanelProps, 'activeSection
                     key={section}
                     type="button"
                     onClick={() => onSectionChange(section)}
-                    className="rounded-full border px-3 py-1.5 text-sm transition-all"
+                    aria-pressed={active}
+                    className="flex-1 min-w-0 whitespace-normal break-words border-b-2 px-1 py-2 text-[11px] leading-4 transition-colors"
                     style={{
-                        ...getAccentOptionStyle(active, theme, isDaylight),
+                        borderColor: active ? theme.accentColor : 'transparent',
                         color: active ? theme.primaryColor : theme.secondaryColor,
                     }}
                 >
@@ -322,6 +325,7 @@ const SectionTabs: React.FC<Pick<VisPlaygroundSettingsPanelProps, 'activeSection
 );
 
 const VisPlaygroundSettingsPanel: React.FC<VisPlaygroundSettingsPanelProps> = (props) => {
+    const randomEnabled = useVisualizerSettingsStore(state => state.randomVisualizerModePerSong);
     const {
         activeSection,
         onSectionChange,
@@ -330,7 +334,6 @@ const VisPlaygroundSettingsPanel: React.FC<VisPlaygroundSettingsPanelProps> = (p
         theme,
         visualizerMode,
         visualizerEntry,
-        onVisualizerModeChange,
         onResetVisualizerTuning,
         controlCardBg,
         rangeInputClass,
@@ -436,16 +439,8 @@ const VisPlaygroundSettingsPanel: React.FC<VisPlaygroundSettingsPanelProps> = (p
 
     // Mod modes and backgrounds come and go at runtime (Folium registries), so the
     // option lists recompute on registry changes, not only on language changes.
-    const foliumVisualizerEntries = useFoliumRegistryEntries(visualizersRegistry);
     const foliumBackgroundEntries = useFoliumRegistryEntries(backgroundsRegistry);
     const missingFoliumSelections = useMissingFoliumSelections();
-    const modeOptions = useMemo(() => (
-        VISUALIZER_REGISTRY.map(entry => ({
-            label: getVisualizerModeLabel(entry.mode, t),
-            value: entry.mode,
-        }))
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    ), [t, foliumVisualizerEntries]);
     const [subtitleFontFamilyDraft, setSubtitleFontFamilyDraft] = useState(subtitleFontFamily ?? '');
 
     useEffect(() => {
@@ -472,16 +467,15 @@ const VisPlaygroundSettingsPanel: React.FC<VisPlaygroundSettingsPanelProps> = (p
     };
 
     return (
-        <div className="min-h-0 flex flex-col gap-4">
-            <SectionTabs
-                activeSection={activeSection}
-                onSectionChange={onSectionChange}
-                t={t}
-                theme={theme}
-                isDaylight={isDaylight}
-            />
+        <div className="min-h-0 min-w-0 flex flex-col gap-3 overflow-hidden">
+            <div className="flex shrink-0 min-w-0 items-center gap-2">
+                <SectionTabs activeSection={activeSection} onSectionChange={onSectionChange} t={t} theme={theme} />
+                {activeSection === 'visualizer' && !randomEnabled && visualizerEntry.resetSettings && (
+                    <div className="shrink-0"><ResetSectionButton compact label={t('ui.default')} onClick={onResetVisualizerTuning} theme={theme} /></div>
+                )}
+            </div>
 
-            <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar space-y-4">
+            <div key={activeSection} data-testid="visualizer-settings-scroll" className="vis-playground-controls pr-1 custom-scrollbar space-y-4">
                 {activeSection === 'common' && (
                     <div className="rounded-[24px] border p-4 space-y-4" style={{ backgroundColor: controlCardBg, borderColor: colorWithAlpha(theme.secondaryColor, 0.16) }}>
                         <div className="flex items-start justify-between gap-3">
@@ -692,35 +686,10 @@ const VisPlaygroundSettingsPanel: React.FC<VisPlaygroundSettingsPanelProps> = (p
                     </>
                 )}
 
-                {activeSection === 'visualizer' && (
+                {activeSection === 'visualizer' && randomEnabled && <RandomPoolGroup />}
+                {activeSection === 'visualizer' && !randomEnabled && (
                     <>
-                        <div className="rounded-[24px] border p-4 space-y-4" style={{ backgroundColor: controlCardBg, borderColor: colorWithAlpha(theme.secondaryColor, 0.16) }}>
-                            <div className="flex items-start justify-between gap-3">
-                                <div className="space-y-1">
-                                    <div className="text-sm font-medium" style={{ color: theme.primaryColor }}>
-                                        {t('options.lyricsRenderer')}
-                                    </div>
-                                    <div className="text-xs opacity-70" style={{ color: theme.secondaryColor }}>
-                                        {t('options.lyricsRendererDesc')}
-                                    </div>
-                                </div>
-                                <ResetSectionButton
-                                    label={t('ui.default')}
-                                    onClick={visualizerEntry.resetSettings ? onResetVisualizerTuning : undefined}
-                                    theme={theme}
-                                />
-                            </div>
-
-                            <PresetGroup
-                                label={t('options.visualizerMode')}
-                                value={visualizerMode}
-                                options={modeOptions}
-                                onChange={(mode) => onVisualizerModeChange?.(mode)}
-                                isDaylight={isDaylight}
-                                theme={theme}
-                            />
-                            {renderMissingFoliumHint('visualizer')}
-                        </div>
+                        {renderMissingFoliumHint('visualizer')}
 
                         {visualizerEntry.renderSettingsPanel?.({
                             t,

@@ -1,3 +1,4 @@
+import { useLibraryWallSeamClear } from '../../../hooks/useLibraryWallSeamClear';
 import { useEffect, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { LibraryPlayerBackdrop } from '../../core/contracts/suite';
@@ -25,14 +26,14 @@ export const useBravaisWallLook = (
     reportPlayerOcclusion: (occludes: boolean) => void,
     reportPlayerBackdrop: (backdrop: LibraryPlayerBackdrop) => void,
 ): { wallLook: BravaisWallLook; seamLook: BravaisSeamLook } => {
-    const { look, windowsPerBlock, seamClear, seamStyle, backdropLyrics, backdropBlur } = useLibraryWallLookStore(useShallow(state => ({
+    const { look, windowsPerBlock, seamStyle, backdropLyrics, backdropBlur } = useLibraryWallLookStore(useShallow(state => ({
         look: state.look,
         windowsPerBlock: state.windowsPerBlock,
-        seamClear: state.seamClear,
         seamStyle: state.seamStyle,
         backdropLyrics: state.backdropLyrics,
         backdropBlur: state.backdropBlur,
     })));
+    const { seamClear } = useLibraryWallSeamClear();
     const backdrop = backdropReportFor(look, seamClear, backdropLyrics, backdropBlur);
 
     useEffect(() => {

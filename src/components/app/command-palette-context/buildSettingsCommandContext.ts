@@ -1,3 +1,4 @@
+import { isAndroidPerformanceEnabled, useAndroidPerformanceStore } from '../../../stores/useAndroidPerformanceStore';
 import type { CommandPaletteContext } from '../../command-palette/types';
 import type { LyricStaffPolicy } from '../../../utils/lyrics/staffCreditsPolicy';
 import type { ThemeGenerationSource } from '../../../services/themePreferences';
@@ -70,6 +71,14 @@ export const buildSettingsCommandContext = (
     const ponder = usePonderStore.getState();
 
     return {
+        toggleAndroidPerformance: () => {
+            const state = useAndroidPerformanceStore.getState();
+            state.setEnabled(!state.enabled);
+        },
+        toggleHideCommandPaletteButton: () => {
+            const state = usePlayerChromeSettingsStore.getState();
+            state.handleToggleHideCommandPaletteButton(!state.hideCommandPaletteButton);
+        },
         openSettings: modal.openSettings,
         setAppLanguagePreference: modal.handleSetAppLanguagePreference,
         toggleTransparentBackground: deps.toggleTransparentBackground,
@@ -100,7 +109,8 @@ export const buildSettingsCommandContext = (
             const wall = useLibraryWallLookStore.getState();
             wall.setCollectionStackEdges(!wall.collectionStackEdges);
         },
-        libraryWallSeamClear: () => useLibraryWallLookStore.getState().seamClear,
+        canToggleLibraryWallSeamClear: () => !isAndroidPerformanceEnabled(),
+        libraryWallSeamClear: () => useLibraryWallLookStore.getState().seamClear && !isAndroidPerformanceEnabled(),
         toggleLibraryWallSeamClear: () => {
             const wall = useLibraryWallLookStore.getState();
             wall.setSeamClear(!wall.seamClear);

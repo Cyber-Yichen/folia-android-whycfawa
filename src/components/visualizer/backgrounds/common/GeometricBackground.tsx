@@ -1,3 +1,4 @@
+import { androidGeometricBudget, isAndroidPerformanceEnabled, useAndroidPerformanceStore } from '../../../../stores/useAndroidPerformanceStore';
 import React, { useMemo } from 'react';
 import { AnimatePresence, motion, MotionValue, useSpring, useTransform } from 'framer-motion';
 import { AudioBands, Theme } from '../../../../types';
@@ -304,6 +305,9 @@ const GeometricLayer: React.FC<GeometricBackgroundProps> = ({
   disableVignette = false,
   paused = false,
 }) => {
+  const performanceMode = useAndroidPerformanceStore(() => isAndroidPerformanceEnabled());
+  const budget = useMemo(() => androidGeometricBudget(15, 20), [performanceMode]);
+
   // Re-renders the scenes below as the theme's icons arrive.
   useLucideIcons(theme.lyricsIcons);
 
@@ -312,7 +316,7 @@ const GeometricLayer: React.FC<GeometricBackgroundProps> = ({
     const availableIcons = theme.lyricsIcons || [];
 
     let iconCount = 0;
-    return Array.from({ length: 15 }).map((_, index) => {
+    return Array.from({ length: budget.shapes }).map((_, index) => {
       const wantIcon = availableIcons.length > 0 && Math.random() > 0.7;
       const useIcon = wantIcon && iconCount < 6;
       if (useIcon) {
@@ -336,10 +340,10 @@ const GeometricLayer: React.FC<GeometricBackgroundProps> = ({
         initialRotation: Math.random() * 360,
       };
     });
-  }, [theme.lyricsIcons, seed]);
+  }, [theme.lyricsIcons, seed, budget.shapes]);
 
   const particles = useMemo<BackgroundParticle[]>(() => (
-    Array.from({ length: 20 }).map((_, index) => ({
+    Array.from({ length: budget.particles }).map((_, index) => ({
       id: index,
       size: Math.random() * 4 + 1,
       left: Math.random() * 100,
@@ -348,7 +352,7 @@ const GeometricLayer: React.FC<GeometricBackgroundProps> = ({
       duration: 15 + Math.random() * 20,
       delay: Math.random() * 10,
     }))
-  ), [seed]);
+  ), [seed, budget.particles]);
 
   return (
     <motion.div
@@ -358,7 +362,7 @@ const GeometricLayer: React.FC<GeometricBackgroundProps> = ({
       exit={{ opacity: 0 }}
       transition={{ duration: 0.6, ease: 'easeInOut' }}
     >
-      {paused ? (
+      {paused || hideShapes ? (
         <StaticGeometricScene
           theme={theme}
           shapes={shapes}

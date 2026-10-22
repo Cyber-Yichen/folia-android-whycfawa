@@ -1,3 +1,4 @@
+import { isAndroidNativeRuntime } from '../../../utils/platform';
 import React, { useCallback } from 'react';
 import { Command, Keyboard, MousePointerClick } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -92,7 +93,7 @@ export const InteractionSettingsSubview: React.FC<InteractionSettingsSubviewProp
         {
             value: 'command-palette',
             label: t('options.gridSlideTargetCommandPalette'),
-            desc: t('options.gridSlideTargetCommandPaletteDesc', { modifier: PRIMARY_MODIFIER_LABEL }),
+            desc: t(isAndroidNativeRuntime() ? 'options.gridSlideTargetCommandPaletteTouchDesc' : 'options.gridSlideTargetCommandPaletteDesc', { modifier: PRIMARY_MODIFIER_LABEL }),
         },
     ];
 
@@ -151,6 +152,7 @@ export const InteractionSettingsSubview: React.FC<InteractionSettingsSubviewProp
                 </div>
             </SettingsAnchor>
 
+            {!isAndroidNativeRuntime() && <>
             <SettingsAnchor anchorId="gridPaletteHotkey" label={t('options.gridPaletteHotkey')}>
                 <SettingsSectionHeading icon={Command} label={t('options.gridPaletteHotkey')} />
                 <div className={`p-4 rounded-xl border ${settingsCardClass}`}>
@@ -208,6 +210,7 @@ export const InteractionSettingsSubview: React.FC<InteractionSettingsSubviewProp
                     </div>
                 </div>
             </SettingsAnchor>
+            </>}
         </div>
     );
 };

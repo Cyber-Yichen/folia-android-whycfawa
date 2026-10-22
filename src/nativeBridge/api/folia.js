@@ -158,9 +158,10 @@ function decodeBridgeKey(value) {
   }
 }
 
-/** 扫码通道归一：只有 wechat 走微信 Web OAuth，其余（含缺省）都按 qq 处理。 */
+/** Normalize unified and legacy login channels. */
 function qqChannelOf(value) {
-  return String(value || '').toLowerCase() === 'wechat' ? 'wechat' : 'qq';
+  const channel = String(value || '').toLowerCase();
+  return channel === 'qqmusic' || channel === 'wechat' ? channel : 'qq';
 }
 
 /** 只回报主机名：头像 URL 里带着用户 hash，整条写进报告没有必要。 */
@@ -620,8 +621,8 @@ async function handleFoliaQqRequest(input, url) {
 async function routeFoliaQqRequest(operation, params, segments, url, cookie) {
 
   if (operation === 'login_channels') {
-    // 本地桥同时支持两条扫码通道：qq（ptlogin + MQTT）与 wechat（微信 OAuth + musicu）。
-    return { code: 200, data: { channels: ['qq', 'wechat'] } };
+    // Unified QQ Music QR accepts QQ, WeChat and QQ Music scanners; legacy explicit routes remain supported.
+    return { code: 200, data: { channels: ['qqmusic'] } };
   }
   if (operation === 'login_status') {
     const status = await getQQLoginStatus(cookie);
@@ -658,6 +659,11 @@ async function routeFoliaQqRequest(operation, params, segments, url, cookie) {
   }
   if (operation === 'login_qr_key') {
     const channel = qqChannelOf(firstValue(params.channel, url.searchParams.get('channel')));
+    if (channel === 'qqmusic') {
+      const qr = await qqNativeCreateLoginQr('qqmusic');
+      const key = encodeBridgeKey({ channel, native: true, qrcodeId: qr.qrcodeId, qrimg: qr.qrimg });
+      return { code: 200, data: { code: 200, unikey: key } };
+    }
     if (channel === 'wechat') {
       const qr = await qqWechatGetLoginQr();
       const key = encodeBridgeKey({ channel, qrsig: qr.qrsig, ptqrtoken: qr.ptqrtoken, qrimg: qr.qrimg || qr.img });

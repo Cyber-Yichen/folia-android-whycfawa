@@ -1,3 +1,5 @@
+import HomeTabIcon from '../../../components/shared/HomeTabIcon';
+import { isAndroidNativeRuntime } from '../../../utils/platform';
 import React, { useMemo, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
@@ -221,6 +223,7 @@ const HomeSeamHead: React.FC<{
     onSelectTab?: (key: string) => void;
     measure?: boolean;
 }> = ({ title, hideTitle, tabs, shorts, lead, onSelectTab, measure = false }) => {
+    const iconTabs = isAndroidNativeRuntime();
     return (
         <div className="bravais-seam-home-head">
             <div className={`bravais-seam-home-title${hideTitle ? ' is-hidden' : ''}`} data-bravais-home-title={measure ? undefined : hideTitle ? 'hidden' : 'shown'}>
@@ -230,25 +233,25 @@ const HomeSeamHead: React.FC<{
                 {lead}
                 {tabs.length > 0 && (measure ? (
                     <div className="bravais-seam-tabs">
-                        {tabs.map(tab => <span key={tab.key} className="bravais-seam-home-tab">{tab.label}</span>)}
+                        {tabs.map(tab => <span key={tab.key} className={iconTabs ? 'bravais-seam-home-tab is-icon' : 'bravais-seam-home-tab'}>{iconTabs ? <HomeTabIcon tab={tab.key} /> : tab.label}</span>)}
                     </div>
                 ) : (
-                    <div className={`bravais-seam-tabs${shorts ? ' is-short' : ''}`} role="tablist" aria-label={title} aria-orientation="vertical">
+                    <div className={`bravais-seam-tabs${shorts ? ' is-short' : ''}`} role="tablist" aria-label={title} aria-orientation={iconTabs ? 'horizontal' : 'vertical'}>
                         {tabs.map((tab, index) => (
                             <button
                                 key={tab.key}
                                 type="button"
                                 role="tab"
                                 aria-selected={tab.active}
-                                aria-label={shorts ? tab.label : undefined}
+                                aria-label={iconTabs || shorts ? tab.label : undefined}
                                 title={tab.label}
                                 disabled={tab.disabled}
                                 data-bravais-tab={tab.key}
                                 data-bravais-tab-short={shorts ? 'true' : undefined}
-                                className={`bravais-seam-home-tab${tab.active ? ' is-active' : ''}`}
+                                className={`bravais-seam-home-tab${iconTabs ? ' is-icon' : ''}${tab.active ? ' is-active' : ''}`}
                                 onClick={() => onSelectTab?.(tab.key)}
                             >
-                                {shorts ? shorts[index] : tab.label}
+                                {iconTabs ? <HomeTabIcon tab={tab.key} /> : shorts ? shorts[index] : tab.label}
                             </button>
                         ))}
                     </div>
@@ -307,7 +310,7 @@ const BravaisSeamHome: React.FC<{
         </button>
     );
     return (
-        <div className={`bravais-seam-home${compact ? ' is-compact' : ''}${short ? ' has-short-tabs' : ''}`} data-bravais-home-seam
+        <div className={`bravais-seam-home${isAndroidNativeRuntime() ? ' is-android' : ''}${compact ? ' is-compact' : ''}${short ? ' has-short-tabs' : ''}`} data-bravais-home-seam
             data-bravais-home-fit={level} data-bravais-home-shortcuts={shortcuts ? (shortcutsInColumn ? 'column' : 'menu') : undefined}>
             <div ref={navRef} className={`bravais-seam-home-nav${overflowing ? ' is-overflowing' : ''}`}>
                 <div className="bravais-seam-home-nav-content">

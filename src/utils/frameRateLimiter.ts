@@ -2,7 +2,7 @@
 // Shared helpers and global RAF gate for optional visualizer frame throttling.
 
 import type { VisualizerFrameRate } from '../types';
-import { IS_ANDROID_WEBVIEW } from './platform';
+import { isAndroidNativeRuntime } from './platform';
 
 type AnimationFrameCallback = FrameRequestCallback;
 type RequestAnimationFrameFn = (callback: AnimationFrameCallback) => number;
@@ -33,7 +33,8 @@ export const isVisualizerFrameRate = (value: unknown): value is VisualizerFrameR
 );
 
 export const parseVisualizerFrameRate = (value: string | null): VisualizerFrameRate => {
-    if (value === 'off' || value === 'auto' || value === null) {
+    if (value === null) return isAndroidNativeRuntime() ? 60 : 'off';
+    if (value === 'off' || value === 'auto') {
         return 'off';
     }
 
@@ -179,16 +180,7 @@ export const installGlobalVisualizerFrameRateLimiter = (overrideFrameRate?: Visu
 
     const initialFrameRate = overrideFrameRate
         ?? parseVisualizerFrameRate(window.localStorage.getItem(VISUALIZER_FRAME_RATE_STORAGE_KEY));
-    // 安卓手机 WebView 上，用户**从未手动设置过**帧率时默认 30FPS：把可视化器/背景动画的 GPU
-    // 绘制次数减半，明显降低发热与耗电；30fps 对音乐律动依然顺滑。这只是默认值 —— 设置里仍有
-    // 30/60/90/120/不限制，用户一旦手动选过（storage 里有值）就永远以他的选择为准。
-    const storedFrameRateRaw = window.localStorage.getItem(VISUALIZER_FRAME_RATE_STORAGE_KEY);
-    const effectiveFrameRate = initialFrameRate === 'off'
-        && !overrideFrameRate
-        && storedFrameRateRaw === null
-        && IS_ANDROID_WEBVIEW
-        ? 30
-        : initialFrameRate;
+    const effectiveFrameRate = initialFrameRate;
     if (effectiveFrameRate === 'off') {
         restoreGlobalVisualizerFrameRateLimiter();
         return;

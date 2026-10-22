@@ -9,6 +9,7 @@ import { FoliumControlButtonSlot, FoliumProgressLayers, useFoliumProgressContext
 // about this markup is not API.
 
 interface ProgressBarProps {
+    ariaLabel?: string;
     currentTime: MotionValue<number>;
     duration: number;
     onSeek: (time: number) => void;
@@ -33,6 +34,7 @@ const formatTime = (time: number) => {
 
 const ProgressBar: React.FC<ProgressBarProps> = ({
     currentTime,
+    ariaLabel,
     duration,
     onSeek,
     onSeekStart,
@@ -192,6 +194,7 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
                 <input
                     ref={inputRef}
                     type="range"
+                    aria-label={ariaLabel}
                     min={0} max={duration || 100}
                     step={0.1}
                     disabled={disabled}

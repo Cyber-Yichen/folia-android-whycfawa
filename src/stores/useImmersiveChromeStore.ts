@@ -9,11 +9,15 @@ import { create } from 'zustand';
 
 type ImmersiveChromeState = {
     immersiveChromeHidden: boolean;
+    playerBarExpanded: boolean;
+    setPlayerBarExpanded: (expanded: boolean) => void;
     setImmersiveChromeHidden: (hidden: boolean) => void;
 };
 
 export const useImmersiveChromeStore = create<ImmersiveChromeState>((set) => ({
     // 默认收起：打开全沉浸并进入播放界面时先干净地收起来。
-    immersiveChromeHidden: true,
+    immersiveChromeHidden: false,
+    playerBarExpanded: false,
+    setPlayerBarExpanded: expanded => set(state => state.playerBarExpanded === expanded ? state : { playerBarExpanded: expanded }),
     setImmersiveChromeHidden: (hidden) => set({ immersiveChromeHidden: hidden }),
 }));

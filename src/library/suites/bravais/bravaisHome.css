@@ -667,3 +667,37 @@
 .bravais-seam-menu.is-home button.is-shortcut svg { color: var(--text-accent, currentColor); opacity: 1; }
 
 :root[data-reduce-motion~='lattice'] .bravais-seam-home .bravais-seam-shortcut { transition: none; }
+
+/* Android category icons retain their orientation and a consistent touch target. */
+.bravais-seam-home .bravais-seam-tabs .bravais-seam-home-tab.is-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    writing-mode: horizontal-tb;
+    min-width: 32px;
+    min-height: 32px;
+    padding: 6px;
+    letter-spacing: 0;
+}
+
+/* Android categories stay fixed above the independently scrollable secondary navigation. */
+.bravais-seam .bravais-seam-home.is-android { --bravais-home-gap: 8px; padding-top: 8px; }
+.bravais-seam-home.is-android .bravais-seam-home-head { width: 100%; gap: 6px; }
+.bravais-seam-home.is-android .bravais-seam-home-side { width: 100%; }
+.bravais-seam-home.is-android .bravais-seam-home-nav { overflow: hidden; }
+.bravais-seam-home.is-android .bravais-seam-home-nav-content { flex: 1 1 auto; min-height: 0; }
+.bravais-seam-home.is-android .bravais-seam-home-nav-content > div:first-child { flex: none; width: 100%; }
+.bravais-seam-home.is-android .bravais-seam-home-middle { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-top: 6px; }
+.bravais-seam-home.is-android .bravais-seam-tabs {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; gap: 6px;
+}
+.bravais-seam-home.is-android .bravais-seam-tabs .bravais-seam-home-tab.is-icon {
+    width: 100%; height: 40px; min-width: 0; min-height: 40px;
+    padding: 0; border-radius: 10px;
+    background: color-mix(in srgb, currentColor 7%, transparent);
+    border: 1px solid color-mix(in srgb, currentColor 8%, transparent);
+}
+.bravais-seam-home.is-android .bravais-seam-tabs .bravais-seam-home-tab.is-active {
+    background: color-mix(in srgb, currentColor 16%, transparent);
+}
+.bravais-seam-home.is-android .bravais-seam-tabs .bravais-seam-home-tab::before { display: none; }

@@ -3,10 +3,15 @@
 // 桌面版走的是主进程 store；这里用 localStorage 提供同一组字段，
 // 让共享的请求逻辑（shared/lyricSegmentationService.mjs 等）可以照常复用。
 
+import { getAiProviderPreset, DEFAULT_GEMINI_MODEL } from '../../shared/aiProviderPresets.mjs';
+
 export type AiProviderId = 'gemini' | 'openai';
 
 export interface AiSettings {
     provider: AiProviderId;
+    preset: string;
+    apiProtocol: 'openai' | 'anthropic';
+    geminiModel: string;
     geminiApiKey: string;
     openaiApiUrl: string;
     openaiApiKey: string;
@@ -20,6 +25,9 @@ export const AI_SETTINGS_CHANGED_EVENT = 'folia-ai-settings-changed';
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {
     provider: 'gemini',
+    preset: 'gemini',
+    apiProtocol: 'openai',
+    geminiModel: DEFAULT_GEMINI_MODEL,
     geminiApiKey: '',
     openaiApiUrl: '',
     openaiApiKey: '',
@@ -41,8 +49,12 @@ export const readAiSettings = (): AiSettings => {
         if (!raw) return { ...DEFAULT_AI_SETTINGS };
         const parsed = JSON.parse(raw) as Partial<AiSettings> | null;
         if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_AI_SETTINGS };
+        const preset = getAiProviderPreset({ AI_PROVIDER: normalizeProvider(parsed.provider), AI_PROVIDER_PRESET: parsed.preset, OPENAI_API_URL: parsed.openaiApiUrl });
         return {
             provider: normalizeProvider(parsed.provider),
+            preset: preset.id,
+            apiProtocol: preset.protocol === 'anthropic' ? 'anthropic' : 'openai',
+            geminiModel: /^[\w.-]+$/.test(parsed.geminiModel ?? '') ? parsed.geminiModel! : DEFAULT_GEMINI_MODEL,
             geminiApiKey: asText(parsed.geminiApiKey),
             openaiApiUrl: asText(parsed.openaiApiUrl),
             openaiApiKey: asText(parsed.openaiApiKey),

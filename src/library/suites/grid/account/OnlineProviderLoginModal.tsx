@@ -1,3 +1,4 @@
+import LoginQrStage from '../../../../components/login/LoginQrStage';
 import { useState } from 'react';
 import { AlertTriangle, Check, ClipboardCopy, Loader2, RotateCcw, ServerCog, X } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -184,7 +185,7 @@ const OnlineProviderLoginModal = ({
                                     {loginMethods?.pendingText}
                                 </div>
                             ) : qrCodeImg ? (
-                                <img src={qrCodeImg} alt="QR Code" className="w-40 h-40" />
+                                <div className="w-40"><LoginQrStage src={qrCodeImg} phase={state} /></div>
                             ) : (
                                 <div className="w-40 h-40 flex items-center justify-center bg-gray-100 rounded-lg">
                                     <Loader2 className="animate-spin text-gray-400" size={24} />

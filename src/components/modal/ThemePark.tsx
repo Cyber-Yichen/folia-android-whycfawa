@@ -1,3 +1,4 @@
+import './theme-park/ThemePark.css';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
@@ -211,7 +212,7 @@ const ThemePark: React.FC<ThemeParkProps> = ({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.22, ease: 'easeOut' }}
-            className="fixed inset-0 z-[140] backdrop-blur-xl p-3 sm:p-5"
+            className="theme-park-overlay fixed inset-0 z-[140] backdrop-blur-xl"
             style={{ backgroundColor: overlayBackground }}
             onMouseDown={handleOverlayMouseDown}
             onClick={handleOverlayClick}
@@ -222,7 +223,7 @@ const ThemePark: React.FC<ThemeParkProps> = ({
                 exit={{ opacity: 0, y: 18, scale: 0.98 }}
                 transition={{ duration: 0.2, ease: 'easeOut' }}
                 onClick={(event) => event.stopPropagation()}
-                data-ponder="theme-park"
+                role="dialog" aria-modal="true" aria-label={t('options.openThemePark')} data-ponder="theme-park"
                 className={`mx-auto flex h-full max-w-7xl flex-col overflow-hidden rounded-[32px] border ${borderColor} ${glassBg} shadow-[0_24px_80px_rgba(0,0,0,0.28)]`}
             >
                 <ThemeParkHeader
@@ -236,8 +237,8 @@ const ThemePark: React.FC<ThemeParkProps> = ({
                     onClose={onClose}
                 />
 
-                <div className="grid min-h-0 flex-1 gap-4 p-4 sm:p-6 lg:grid-cols-[minmax(0,1.2fr)_380px] lg:items-stretch">
-                    <div className="min-h-[300px] lg:min-h-0 lg:h-full">
+                <div className="theme-park-layout">
+                    <div className="theme-park-stage">
                         <ThemePreview
                             theme={previewTheme[mode]}
                             mode={mode}
@@ -262,7 +263,7 @@ const ThemePark: React.FC<ThemeParkProps> = ({
                         />
                     </div>
 
-                    <div className="relative z-30 min-h-0 overflow-y-auto pr-1 custom-scrollbar">
+                    <div data-testid="theme-park-controls" className="theme-park-controls relative z-30 pr-1 custom-scrollbar">
                         <div
                             className="space-y-4 rounded-[24px] border border-white/10 p-4"
                             style={{ backgroundColor: controlCardBg }}

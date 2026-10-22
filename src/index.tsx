@@ -1,3 +1,5 @@
+import { installAndroidCacheBudget } from './services/repositories/androidCacheBudget';
+import { installAndroidPerformancePreference } from './services/androidPerformance';
 import { Buffer } from 'buffer';
 import { installGlobalVisualizerFrameRateLimiter } from './utils/frameRateLimiter';
 import { installConsoleLogCapture } from './utils/consoleLogBuffer';
@@ -33,6 +35,8 @@ installFrameTimingDiagnostics();
 // if (import.meta.env.DEV) installCoverSizeAudit();
 installGlobalVisualizerFrameRateLimiter();
 installAndroidPhoneFitPreference();
+installAndroidPerformancePreference();
+installAndroidCacheBudget();
 // 屏幕常亮：启动时套用保存的开关状态（安卓走原生窗口标志）。
 installKeepScreenOnPreference();
 void installNativeAndroidBridge();

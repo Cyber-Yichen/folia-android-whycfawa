@@ -1,3 +1,6 @@
+import { Shuffle } from 'lucide-react';
+import { RANDOM_VISUALIZER_CHOICE, selectLyricStyleChoice } from '../../visualizer/random/lyricStyleChoices';
+import { useRandomPool } from '../../visualizer/random/useRandomPool';
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Theme, ThemeMode, VisualizerBackgroundMode, VisualizerMode } from '../../../types';
@@ -60,6 +63,8 @@ const AppearanceSection: React.FC<AppearanceSectionProps> = ({
     onClosePanel,
 }) => {
     const { t } = useTranslation();
+    const randomEnabled = useVisualizerSettingsStore(state => state.randomVisualizerModePerSong);
+    const randomPool = useRandomPool();
     const openSettings = useSettingsModalStore(state => state.openSettings);
     // Only the modes whose typography is built from word segmentation get the chip; the registry
     // says which, so adding such a mode does not mean editing a list here.
@@ -77,10 +82,10 @@ const AppearanceSection: React.FC<AppearanceSectionProps> = ({
     const setSoraBackgroundTuning = useVisualizerSettingsStore(state => state.handleSetSoraBackgroundTuning);
 
     const visualizerOptions = useMemo(
-        () => VISUALIZER_REGISTRY.map(entry => ({
+        () => [...VISUALIZER_REGISTRY.map(entry => ({
             value: entry.mode,
             label: getVisualizerModeLabel(entry.mode, t),
-        })),
+        })), { value: RANDOM_VISUALIZER_CHOICE, label: t('ui.visualizerRandom') }],
         [t],
     );
     const visualizerModes = useMemo(() => visualizerOptions.map(option => option.value), [visualizerOptions]);
@@ -148,11 +153,11 @@ const AppearanceSection: React.FC<AppearanceSectionProps> = ({
             {/* 思索「歌词样式」的埋点：两行一起算，因为那一章讲的就是歌词和背景各选各的。 */}
             <div data-ponder="lyric-style" className="space-y-1">
                 <ModeStepperRow<VisualizerMode>
-                    value={visualizerMode}
+                    value={randomEnabled ? RANDOM_VISUALIZER_CHOICE : visualizerMode}
                     options={visualizerOptions}
-                    onSelect={onVisualizerModeChange}
+                    onSelect={mode => selectLyricStyleChoice(mode, onVisualizerModeChange)}
                     onStep={stepVisualizerMode}
-                    renderGlyph={mode => <VisualizerModeGlyph mode={mode} />}
+                    renderGlyph={mode => mode === RANDOM_VISUALIZER_CHOICE ? <Shuffle size={18} /> : <VisualizerModeGlyph mode={mode} />}
                     ariaLabel={t('ui.animationMode')}
                     moreLabel={t('ui.moreSettings')}
                     onOpenMore={openVisualizerSettings}
@@ -166,6 +171,10 @@ const AppearanceSection: React.FC<AppearanceSectionProps> = ({
                                 title={`${t('ui.animationIntensity')}: ${t(`animation.${theme.animationIntensity}`)}`}
                                 onClick={cycleAnimationIntensity}
                             />
+                            {randomEnabled && <>
+                                <QuickControlChip isDaylight={isDaylight} label={randomPool.currentLabel} title={t('options.randomVisualizerReroll')} onClick={randomPool.reroll} />
+                                <QuickControlChip isDaylight={isDaylight} label={t('options.randomPoolChoose')} title={randomPool.countLabel} onClick={openVisualizerSettings} />
+                            </>}
                             {usesWordSegmentation && (
                                 <QuickControlToggle
                                     active={hasSavedSegmentation}

@@ -11,10 +11,6 @@ import { useTypographySettingsStore } from '../../../stores/useTypographySetting
 import { usePlayerChromeSettingsStore } from '../../../stores/usePlayerChromeSettingsStore';
 import { useThemeSettingsStore } from '../../../stores/useThemeSettingsStore';
 import { useDesktopSettingsStore } from '../../../stores/useDesktopSettingsStore';
-import AiProviderSettings from './AiProviderSettings';
-
-// 桌面版把 AI 凭据放在主进程设置里，这个页面只有移动端/网页端才需要自己填。
-const isElectronBuild = typeof window !== 'undefined' && Boolean((window as unknown as { electron?: unknown }).electron);
 
 // src/components/modal/settings/LabSettingsModal.tsx
 // Experimental settings subview kept outside SettingsModal to avoid another giant inline panel.
@@ -248,18 +244,20 @@ const LabSettingsModal: React.FC<LabSettingsModalProps> = ({
                                     {renderToggle(autoPlayOnLaunch, () => onToggleAutoPlayOnLaunch(!autoPlayOnLaunch))}
                                 </div>
 
-                                <div className={`p-4 rounded-xl border flex items-center justify-between gap-4 ${settingsCardClass}`}>
-                                    <div className="space-y-1">
-                                        <div className="text-sm font-medium flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-                                            <Monitor size={14} />
-                                            {t('options.alwaysShowMainWindowTitlebar')}
+                                {isElectron && (
+                                    <div className={`p-4 rounded-xl border flex items-center justify-between gap-4 ${settingsCardClass}`}>
+                                        <div className="space-y-1">
+                                            <div className="text-sm font-medium flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                                                <Monitor size={14} />
+                                                {t('options.alwaysShowMainWindowTitlebar')}
+                                            </div>
+                                            <div className="text-xs opacity-50 max-w-[320px]" style={{ color: 'var(--text-secondary)' }}>
+                                                {t('options.alwaysShowMainWindowTitlebarDesc')}
+                                            </div>
                                         </div>
-                                        <div className="text-xs opacity-50 max-w-[320px]" style={{ color: 'var(--text-secondary)' }}>
-                                            {t('options.alwaysShowMainWindowTitlebarDesc')}
-                                        </div>
+                                        {renderToggle(alwaysShowMainWindowTitlebar, () => onToggleAlwaysShowMainWindowTitlebar(!alwaysShowMainWindowTitlebar))}
                                     </div>
-                                    {renderToggle(alwaysShowMainWindowTitlebar, () => onToggleAlwaysShowMainWindowTitlebar(!alwaysShowMainWindowTitlebar))}
-                                </div>
+                                )}
 
                                 {isMacElectron && (
                                     <div className={`p-4 rounded-xl border flex items-center justify-between gap-4 ${settingsCardClass}`}>
@@ -307,13 +305,7 @@ const LabSettingsModal: React.FC<LabSettingsModalProps> = ({
                                 )}
                 </SettingsAnchor>
 
-                {/* 安卓/网页版：AI 凭据由用户自己填并保存在本机。桌面版用主进程里的那份设置。 */}
-                {!isElectronBuild && (
-                    <div className="space-y-4">
-                        <SettingsSectionHeading icon={Sparkles} label={t('ui.aiTheme')} divider />
-                        <AiProviderSettings settingsCardClass={settingsCardClass} isDaylight={isDaylight} />
-                    </div>
-                )}
+
             </div>
             </div>
         </>

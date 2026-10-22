@@ -157,6 +157,16 @@ export const getCoverAssetUsage = async (): Promise<number> => {
   return total;
 };
 
+// Removes interrupted network-cover writes without touching imported local cover assets.
+export const pruneCoverAssets = async (cacheKeys: string[]): Promise<void> => {
+  const directory = await getOpfsCoverDirectory(false);
+  if (!directory) return;
+  const keep = new Set(await Promise.all(cacheKeys.map(async key => (await hashAssetKey(key)) + '.bin')));
+  for await (const entry of directory.values()) {
+    if (entry.kind === 'file' && !keep.has(entry.name)) await directory.removeEntry(entry.name);
+  }
+};
+
 export const clearCoverAssets = async (): Promise<void> => {
   if (hasElectronCoverBridge() && typeof window.electron?.clearCoverCache === 'function') {
     await window.electron.clearCoverCache();

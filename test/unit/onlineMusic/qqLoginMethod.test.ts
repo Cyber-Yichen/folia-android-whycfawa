@@ -196,3 +196,17 @@ describe('QQ login channels declared by the backend', () => {
         expect(probes).toHaveLength(1);
     });
 });
+
+describe('unified QQ Music QR', () => {
+    it('starts the declared unified channel directly without choosing QQ or WeChat', async () => {
+        resetQqLoginChannelCache();
+        requestMock.mockImplementation(async (operation: string) => {
+            if (operation === 'login_channels') return { code: 200, data: { channels: ['qqmusic'] } };
+            if (operation === 'login_qr_key') return { code: 200, data: { unikey: 'unified' } };
+            return { code: 200, data: { qrimg: 'data:image/png;base64,fixture' } };
+        });
+        await expect(omni.resolveQrLoginMethods('qq')).resolves.toEqual([]);
+        await omni.createQrLogin('qq');
+        expect(requestMock).toHaveBeenCalledWith('login_qr_key', { channel: 'qqmusic' });
+    });
+});

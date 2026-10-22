@@ -1,3 +1,6 @@
+import { androidRenderResolution, isAndroidPerformanceEnabled } from '../../../stores/useAndroidPerformanceStore';
+import { rememberBounded } from '../textMeasureCache';
+import { createCadenzaGlowWriter } from './cadenzaGlow';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
@@ -21,12 +24,10 @@ import {
     clearOverlayWordNodes,
     createOverlayWordNodes,
     syncOverlayGlyphSpans,
-    writeOverlayGlyphShadow,
     writeOverlayWord,
 } from './cadenzaOverlayNodes';
 import {
     ACTIVE_PULSE_FREQUENCY,
-    buildDomTextShadow,
     clamp,
     getClassicBodyMix,
     getClassicCharGlow,
@@ -87,6 +88,7 @@ const VisualizerCadenza: React.FC<VisualizerProps> = (props) => {
     const animatedPlacementRef = useRef<Map<string, AnimatedPlacementState>>(new Map());
     const preparedStateCacheRef = useRef<Map<string, PreparedState>>(new Map());
     const preparedStateCacheContextKeyRef = useRef<string>('');
+    const cachedLinesRef = useRef(lines);
     const lastFrameTimeRef = useRef<number | null>(null);
 
     const {
@@ -101,6 +103,7 @@ const VisualizerCadenza: React.FC<VisualizerProps> = (props) => {
         getLineEndTime: getLineRenderEndTime,
     });
     const tuning = cadenzaTuning;
+    const performanceMode = isAndroidPerformanceEnabled();
     const emptyFontSize = `clamp(${(1.5 * lyricsFontScale).toFixed(3)}rem, ${(3.5 * lyricsFontScale).toFixed(3)}vw, ${(2.25 * lyricsFontScale).toFixed(3)}rem)`;
     const { translationFontSize, upcomingFontSize } = resolveSubtitleFontSizes(lyricsFontScale);
 
@@ -150,7 +153,8 @@ const VisualizerCadenza: React.FC<VisualizerProps> = (props) => {
         viewport.width,
     ]);
 
-    if (preparedStateCacheContextKeyRef.current !== preparedStateContextKey) {
+    if (preparedStateCacheContextKeyRef.current !== preparedStateContextKey || cachedLinesRef.current !== lines) {
+        cachedLinesRef.current = lines;
         preparedStateCacheRef.current.clear();
         preparedStateCacheContextKeyRef.current = preparedStateContextKey;
     }
@@ -169,10 +173,8 @@ const VisualizerCadenza: React.FC<VisualizerProps> = (props) => {
         const observer = new ResizeObserver(entries => {
             const entry = entries[0];
             if (!entry) return;
-            setViewport({
-                width: entry.contentRect.width,
-                height: entry.contentRect.height,
-            });
+            const { width, height } = entry.contentRect;
+            setViewport(current => current.width === width && current.height === height ? current : { width, height });
         });
 
         observer.observe(element);
@@ -193,7 +195,7 @@ const VisualizerCadenza: React.FC<VisualizerProps> = (props) => {
 
             const nextState = buildPreparedState(line, preparedStateContext);
             if (nextState) {
-                preparedStateCacheRef.current.set(cacheKey, nextState);
+                rememberBounded(preparedStateCacheRef.current, cacheKey, nextState, 8);
             }
             return nextState;
         };
@@ -208,7 +210,7 @@ const VisualizerCadenza: React.FC<VisualizerProps> = (props) => {
             upcomingLine,
             prepareLine: getOrPrepareState,
         });
-    }, [activeLine, preparedStateContext, upcomingLine, showText, viewport.height, viewport.width]);
+    }, [activeLine, lines, preparedStateContext, upcomingLine, showText, viewport.height, viewport.width]);
 
     useEffect(() => {
         const textCanvas = textCanvasRef.current;
@@ -246,6 +248,11 @@ const VisualizerCadenza: React.FC<VisualizerProps> = (props) => {
         // status gives, without the comparator re-deriving every status on every comparison.
         const byStatus: Record<'waiting' | 'passed' | 'active', WordPlacement[]> = { waiting: [], passed: [], active: [] };
         let frameNumber = 0;
+        let canvasHasInk = true;
+        const writeGlow = createCadenzaGlowWriter(performanceMode);
+        const lineTiming = activeLine ? resolveLineRenderTiming(activeLine) : null;
+        const lineSeed = activeLine ? Math.abs(Math.sin(activeLine.startTime * 997.1)) : 0;
+        const linePerspective = theme.animationIntensity === 'chaotic' ? 500 + Math.round(lineSeed * 500) : 1000;
 
         const draw = () => {
             const now = performance.now();
@@ -255,35 +262,37 @@ const VisualizerCadenza: React.FC<VisualizerProps> = (props) => {
             lastFrameTimeRef.current = now;
             const width = Math.max(Math.floor(viewport.width), 1);
             const height = Math.max(Math.floor(viewport.height), 1);
-            const dpr = window.devicePixelRatio || 1;
+            const dpr = androidRenderResolution(window.devicePixelRatio || 1, width, height);
 
             if (textCanvas.width !== Math.floor(width * dpr) || textCanvas.height !== Math.floor(height * dpr)) {
                 textCanvas.width = Math.floor(width * dpr);
                 textCanvas.height = Math.floor(height * dpr);
                 textCanvas.style.width = `${width}px`;
                 textCanvas.style.height = `${height}px`;
+                textContext.setTransform(dpr, 0, 0, dpr, 0, 0);
+                canvasHasInk = false;
             }
 
-            textContext.setTransform(dpr, 0, 0, dpr, 0, 0);
-            textContext.clearRect(0, 0, width, height);
+            // The canvas only holds chorus ripples; ordinary lines live entirely in the DOM.
+            if (canvasHasInk) {
+                textContext.clearRect(0, 0, width, height);
+                canvasHasInk = false;
+            }
 
-            if (!showText || !preparedState || !activeLine) {
+            if (!showText || !preparedState || !activeLine || !lineTiming) {
                 lineLayer.style.opacity = '0';
                 lineLayer.style.filter = 'none';
                 lineLayer.style.transform = 'scale(1)';
                 lineLayer.style.perspective = '1000px';
                 clearOverlayWordNodes(overlayNodesRef.current);
-                frameId = window.requestAnimationFrame(draw);
+                // A new active line or showText change restarts this effect; the background owns its own loop.
                 return;
             }
 
             const time = currentTime.get();
-            const lineTiming = resolveLineRenderTiming(activeLine);
             const lineEnvelope = getClassicLineEnvelope(time, activeLine, lineTiming);
             const wordRevealMode = lineTiming.wordRevealMode;
             const isInstantWordReveal = wordRevealMode === 'instant';
-            const lineSeed = Math.abs(Math.sin(activeLine.startTime * 997.1));
-            const linePerspective = theme.animationIntensity === 'chaotic' ? 500 + Math.round(lineSeed * 500) : 1000;
             const energy = clamp(audioPower.get() / 255, 0, 1);
             const motionEnergy = energy * tuning.motionAmount;
             const verticalLift = Math.sin(time * 2.3) * (3 + motionEnergy * 8);
@@ -308,6 +317,9 @@ const VisualizerCadenza: React.FC<VisualizerProps> = (props) => {
             const overlayNodes = overlayNodesRef.current;
             frameNumber += 1;
 
+            const transformTransitionAmount = 1 - Math.exp(-11 * dt);
+            const visualTransitionAmount = 1 - Math.exp(-14 * dt);
+            const glowTransitionAmount = 1 - Math.exp(-16 * dt);
             let placementIndex = -1;
             for (const status of STATUS_DRAW_ORDER) {
                 for (const placement of byStatus[status]) {
@@ -351,8 +363,6 @@ const VisualizerCadenza: React.FC<VisualizerProps> = (props) => {
                     const targetBlur = status === 'waiting' && !isInstantWordReveal ? 10 : 0;
                     const targetActiveMix = getClassicBodyMix(time, lineTiming, placement.word);
                     const targetGlowAlpha = getClassicGlowEnvelope(time, lineTiming, placement.word);
-                    const transformTransitionAmount = 1 - Math.exp(-11 * dt);
-                    const visualTransitionAmount = 1 - Math.exp(-14 * dt);
                     const stateMap = animatedPlacementRef.current;
                     const existingState = stateMap.get(placement.id);
                     const shouldInitializeAsActive = isInstantWordReveal && time >= placement.word.startTime;
@@ -374,7 +384,7 @@ const VisualizerCadenza: React.FC<VisualizerProps> = (props) => {
                     animatedState.bodyAlpha = mix(animatedState.bodyAlpha, targetBodyAlpha, visualTransitionAmount);
                     animatedState.blur = mix(animatedState.blur, targetBlur, visualTransitionAmount);
                     animatedState.activeMix = mix(animatedState.activeMix, targetActiveMix, visualTransitionAmount);
-                    animatedState.glowAlpha = mix(animatedState.glowAlpha, targetGlowAlpha, 1 - Math.exp(-16 * dt));
+                    animatedState.glowAlpha = mix(animatedState.glowAlpha, targetGlowAlpha, glowTransitionAmount);
                     stateMap.set(placement.id, animatedState);
 
                     if (animatedState.bodyAlpha < 0.015 && animatedState.glowAlpha < 0.015) {
@@ -401,6 +411,7 @@ const VisualizerCadenza: React.FC<VisualizerProps> = (props) => {
                                 Math.PI * 2,
                             );
                             textContext.stroke();
+                            canvasHasInk = true;
                         }
                     }
 
@@ -423,6 +434,7 @@ const VisualizerCadenza: React.FC<VisualizerProps> = (props) => {
                     if (!overlayWord) {
                         overlayWord = createOverlayWordNodes();
                         overlayNodes.set(placement.id, overlayWord);
+                        syncOverlayGlyphSpans(overlayWord, shouldSplitGlow ? glyphs : [placement.text]);
                         overlay.appendChild(overlayWord.outer);
                     }
                     overlayWord.frame = frameNumber;
@@ -432,7 +444,7 @@ const VisualizerCadenza: React.FC<VisualizerProps> = (props) => {
                         // Own compositing layer while Lab > Fix lyric animation freeze on Linux is on: otherwise every
                         // new scale re-rasterizes the word and its 40px text-shadow at a new device size, and Chromium's
                         // glyph cache leaks shared memory for each one. See utils/glowBlurQuantize.ts.
-                        willChange: isGlowBlurQuantized() ? 'transform' : '',
+                        willChange: performanceMode || isGlowBlurQuantized() ? 'transform' : '',
                         font: preparedState.font,
                         innerTransform: `translate3d(${overlayOffsetX}px, ${overlayOffsetY}px, 0)`,
                         text: placement.text,
@@ -440,9 +452,6 @@ const VisualizerCadenza: React.FC<VisualizerProps> = (props) => {
                         opacity: animatedState.bodyAlpha.toString(),
                         filter: animatedState.blur > 0.05 ? `blur(${animatedState.blur.toFixed(2)}px)` : 'none',
                     });
-
-                    const glowTexts = shouldSplitGlow ? glyphs : [placement.text];
-                    syncOverlayGlyphSpans(overlayWord, glowTexts);
 
                     if (shouldSplitGlow) {
                         for (let glyphIndex = 0; glyphIndex < overlayWord.glyphSpans.length; glyphIndex += 1) {
@@ -455,13 +464,13 @@ const VisualizerCadenza: React.FC<VisualizerProps> = (props) => {
                                 placement.wordGraphemeTimings,
                             ) * clamp(animatedState.glowAlpha, 0, 1) * Math.max(tuning.glowIntensity, 0);
 
-                            writeOverlayGlyphShadow(overlayWord, glyphIndex, buildDomTextShadow(placement.color, intensity, blurScale));
+                            writeGlow(overlayWord, glyphIndex, placement.color, intensity, blurScale);
                         }
                     } else if (overlayWord.glyphSpans[0]) {
                         const intensity = getClassicGlowEnvelope(time, lineTiming, placement.word)
                             * clamp(animatedState.glowAlpha, 0, 1)
                             * Math.max(tuning.glowIntensity, 0);
-                        writeOverlayGlyphShadow(overlayWord, 0, buildDomTextShadow(placement.color, intensity, blurScale));
+                        writeGlow(overlayWord, 0, placement.color, intensity, blurScale);
                     }
 
                 }
@@ -491,6 +500,7 @@ const VisualizerCadenza: React.FC<VisualizerProps> = (props) => {
         preparedState,
         showText,
         theme,
+        performanceMode,
         tuning.glowIntensity,
         tuning.motionAmount,
         viewport.height,

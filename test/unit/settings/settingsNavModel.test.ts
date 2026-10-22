@@ -37,6 +37,20 @@ describe('settingsNavModel', () => {
         expect(groups.every(group => group.items.length > 0)).toBe(true);
     });
 
+    it('hides keyboard anchors on Android while keeping touch interaction settings', () => {
+        const groups = buildSettingsNavGroups(echo, { isElectron: false, supportsKeyboard: false });
+        const interaction = findSettingsNavItem(groups, 'interaction');
+        expect(interaction?.anchors.map(anchor => anchor.id)).toEqual(['gridActionButton']);
+        expect(findSettingsNavItem(groups, 'lab')).toBeDefined();
+        expect(findSettingsNavItem(groups, 'desktop')).toBeUndefined();
+    });
+
+    it('keeps keyboard anchors available for desktop browsers', () => {
+        const groups = buildSettingsNavGroups(echo, { isElectron: false });
+        expect(findSettingsNavItem(groups, 'interaction')?.anchors.map(anchor => anchor.id))
+            .toEqual(['gridActionButton', 'gridPaletteHotkey', 'customShortcut']);
+    });
+
     it('keeps the section order the flat sidebar list used', () => {
         const ids = flattenSettingsNavItems(buildSettingsNavGroups(echo, { isElectron: true })).map(item => item.id);
         expect(ids).toEqual(ALL_SECTIONS);
@@ -52,9 +66,16 @@ describe('settingsNavModel', () => {
     it('expands every declared anchor under its owning section', () => {
         const items = flattenSettingsNavItems(buildSettingsNavGroups(echo, { isElectron: true, hasLibrarySuiteChoice: true, isBravaisSuiteActive: true }));
         const rendered = items.flatMap(item => item.anchors.map(anchor => [anchor.id, item.id]));
-        const declared = Object.entries(SETTINGS_ANCHOR_DEFINITIONS).map(([id, definition]) => [id, definition.section]);
+        const declared = Object.entries(SETTINGS_ANCHOR_DEFINITIONS).filter(([, definition]) => !('webOnly' in definition && definition.webOnly)).map(([id, definition]) => [id, definition.section]);
 
         expect(rendered).toEqual(declared);
+    });
+
+    it('places AI API configuration under appearance on Android and omits it from desktop navigation', () => {
+        const web = flattenSettingsNavItems(buildSettingsNavGroups(echo, { isElectron: false, supportsKeyboard: false }));
+        const desktop = flattenSettingsNavItems(buildSettingsNavGroups(echo, { isElectron: true }));
+        expect(web.find(item => item.id === 'appearance')?.anchors.some(anchor => anchor.id === 'aiProvider')).toBe(true);
+        expect(desktop.flatMap(item => item.anchors).some(anchor => anchor.id === 'aiProvider')).toBe(false);
     });
 
     it('lists the library suite anchor only when there is a suite to choose (its section renders nothing otherwise)', () => {

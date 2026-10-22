@@ -1,3 +1,4 @@
+import { isAndroidNativeRuntime } from '../../../utils/platform';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DAYLIGHT_THEME, DEFAULT_THEME } from '../../../services/baseThemes';
@@ -130,7 +131,7 @@ export const usePlayerPanelModel = ({
         isMuted,
         showOpenPanelCloseButton,
         isPanelGuideHotspotActive,
-        hideToggleButton: isPlayerChromeHidden || shouldHidePlayerRightPanelButton || immersivePlayerChromeHidden,
+        hideToggleButton: (isAndroidNativeRuntime() ? immersivePlayerChromeHidden : isPlayerChromeHidden) || shouldHidePlayerRightPanelButton || immersivePlayerChromeHidden,
         activePlaybackContext,
         audioQuality,
         useCoverColorBg,

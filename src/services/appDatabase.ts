@@ -18,6 +18,13 @@ export interface StoredCacheEntry<T = unknown> {
   timestamp: number;
 }
 
+export interface CacheBudgetRecord {
+  key: string;
+  table: string;
+  bytes: number;
+  accessedAt: number;
+}
+
 export interface ThemeRegistryRecord {
   fingerprint: string;
   [key: string]: unknown;
@@ -29,6 +36,7 @@ export class AppDatabase extends Dexie {
   user_cache!: Table<StoredCacheEntry, string>;
   media_cache!: Table<StoredCacheEntry, string>;
   metadata_cache!: Table<StoredCacheEntry, string>;
+  cache_budget!: Table<CacheBudgetRecord, string>;
   local_music!: Table<LocalSong, string>;
   theme_registry!: Table<ThemeRegistryRecord, string>;
   local_library_entities!: Table<LocalLibraryEntity, string>;
@@ -96,6 +104,8 @@ export class AppDatabase extends Dexie {
       local_library_assignments: 'songId, *artistEntityIds, albumEntityId, artistOrigin, albumOrigin',
       local_cover_assets: 'id',
     });
+
+    this.version(1).stores({ cache_budget: 'key' });
 
     this.on('versionchange', event => {
       this.close();

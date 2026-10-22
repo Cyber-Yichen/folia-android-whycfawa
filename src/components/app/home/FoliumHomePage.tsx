@@ -1,3 +1,5 @@
+import HomeTabIcon from '../../shared/HomeTabIcon';
+import { isAndroidNativeRuntime } from '../../../utils/platform';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft } from 'lucide-react';
@@ -111,9 +113,9 @@ export function FoliumHomePage({ entry, extraTabs, account, surfaceProps }: Foli
             </button>
             <nav className="flex flex-1 flex-wrap items-center gap-1" aria-label={t('mods.homePageNavigation')}>
                 {nativeSources.tabs.map(tab => <button key={tab.key} type="button" disabled={Boolean(tab.disabledReason)}
-                    title={tab.disabledReason || tab.label} onClick={() => { selectNativeHomeTabFromPage(tab.key, nativeSources.setTab); }}
+                    aria-label={tab.label} title={tab.disabledReason || tab.label} onClick={() => { selectNativeHomeTabFromPage(tab.key, nativeSources.setTab); }}
                     className="rounded-full px-3 py-1.5 text-sm opacity-70 hover:opacity-100 disabled:opacity-30">
-                    {tab.label}
+                    {isAndroidNativeRuntime() ? <HomeTabIcon tab={tab.key} /> : tab.label}
                 </button>)}
                 {extraTabs.map(tab => <button key={tab.id} type="button" aria-pressed={tab.active}
                     ref={tab.active ? activeTabRef : undefined}

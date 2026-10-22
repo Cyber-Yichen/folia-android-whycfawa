@@ -1,3 +1,7 @@
+import { applyPlaybackAppearanceConfig } from '../../../services/playbackAppearanceConfig';
+import { useAndroidPerformanceStore } from '../../../stores/useAndroidPerformanceStore';
+import AiProviderSettings from './AiProviderSettings';
+import { isAndroidNativeRuntime } from '../../../utils/platform';
 import React, { useState } from 'react';
 import { Monitor, Palette, Settings2, LayoutGrid, PanelsTopLeft, Images, Download, Copy, Check, ChevronRight, AlertTriangle, KeyRound, Music2, Film } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -216,6 +220,7 @@ const AppearanceSettingsSubview: React.FC<AppearanceSettingsSubviewProps> = ({
     const storeVisualizer = useVisualizerSettingsStore(useShallow(state => ({
         visualizerMode: state.visualizerMode,
         randomVisualizerModePerSong: state.randomVisualizerModePerSong,
+        randomVisualizerModes: state.randomVisualizerModes,
         visualizerBackgroundMode: state.visualizerBackgroundMode,
         backgroundOpacity: state.backgroundOpacity,
         visualizerOpacity: state.visualizerOpacity,
@@ -394,6 +399,9 @@ const AppearanceSettingsSubview: React.FC<AppearanceSettingsSubviewProps> = ({
     const applyImportedConfig = (config: any, keys: string[]) => {
         const has = (key: string) => keys.includes(key);
         try {
+            if (has('androidPerformanceMode') && typeof config.androidPerformanceMode === 'boolean') {
+                useAndroidPerformanceStore.getState().setEnabled(config.androidPerformanceMode);
+            }
             // 1. Restore Theme, per side: taking someone's night colours must not drag their day
             // ones along, so the side that was not picked keeps whatever is saved now.
             const savesTheme = Boolean(config.theme) && (has(THEME_LIGHT_KEY) || has(THEME_DARK_KEY));
@@ -412,12 +420,7 @@ const AppearanceSettingsSubview: React.FC<AppearanceSettingsSubviewProps> = ({
             }
 
             // 2. Restore Visualizer Setup
-            if (has('visualizerMode') && config.visualizerMode) {
-                storeVisualizer.handleSetVisualizerMode(config.visualizerMode);
-            }
-            if (has('randomVisualizerModePerSong')) {
-                storeVisualizer.handleToggleRandomVisualizerModePerSong(Boolean(config.randomVisualizerModePerSong));
-            }
+            applyPlaybackAppearanceConfig(config, Object.keys(config).filter(has));
             if (has('visualizerOpacity')) {
                 storeVisualizer.handleSetVisualizerOpacity(config.visualizerOpacity);
             }
@@ -706,7 +709,7 @@ const AppearanceSettingsSubview: React.FC<AppearanceSettingsSubviewProps> = ({
                         </div>
                         {/* 指针隐藏是控制栏自动隐藏的附加项：上面那个开关关着时它无事可做，
                             所以整行淡出，但仍可点击——先设好偏好再开自动隐藏也是合理的顺序。 */}
-                        <div className={`pl-4 border-l-2 border-white/10 flex items-center justify-between gap-4 transition-opacity ${autoHidePlayerChrome ? '' : 'opacity-40'}`}>
+                        {!isAndroidNativeRuntime() && <div className={`pl-4 border-l-2 border-white/10 flex items-center justify-between gap-4 transition-opacity ${autoHidePlayerChrome ? '' : 'opacity-40'}`}>
                             <div className="space-y-1">
                                 <div className="text-sm font-medium flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
                                     {t('options.autoHideCursorWithPlayerChrome')}
@@ -722,10 +725,15 @@ const AppearanceSettingsSubview: React.FC<AppearanceSettingsSubviewProps> = ({
                             >
                                 <div className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${autoHideCursorWithPlayerChrome ? 'translate-x-6' : 'translate-x-0'}`} />
                             </button>
-                        </div>
+                        </div>}
                     </div>
                 </div>
             </SettingsAnchor>
+
+            {!window.electron && <SettingsAnchor anchorId="aiProvider" label={t('ui.aiTheme')}>
+                <SettingsSectionHeading icon={Palette} label={t('ui.aiTheme')} />
+                <AiProviderSettings settingsCardClass={settingsCardClass} isDaylight={isDaylight} />
+            </SettingsAnchor>}
 
             {/* Section 2: Theme presets and edit options */}
             <SettingsAnchor anchorId="themePresets" label={t('options.themePresets')}>

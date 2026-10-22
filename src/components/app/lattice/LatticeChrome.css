@@ -57,3 +57,26 @@
     .lattice-chrome-time { font-size: 20px; }
     .lattice-root .lattice-poster.is-expanded .lattice-poster-copy { bottom: 220px; }
 }
+
+/* Camera compensation preserves physical touch targets on short landscape displays. */
+.lattice-field.is-touch .lattice-chrome { width: 100%; gap: calc(10px / var(--lattice-camera-scale)); }
+.lattice-field.is-touch .lattice-chrome button {
+    width: calc(44px / var(--lattice-camera-scale)); height: calc(44px / var(--lattice-camera-scale));
+}
+.lattice-field.is-touch .lattice-chrome button svg {
+    width: calc(20px / var(--lattice-camera-scale)); height: calc(20px / var(--lattice-camera-scale));
+}
+.lattice-field.is-touch .lattice-chrome-transport {
+    min-height: calc(44px / var(--lattice-camera-scale)); gap: calc(4px / var(--lattice-camera-scale));
+}
+.lattice-field.is-touch .lattice-chrome-actions { gap: calc(4px / var(--lattice-camera-scale)); }
+.lattice-field.is-touch .lattice-chrome-time { font-size: calc(11px / var(--lattice-camera-scale)); padding-left: 0; }
+.lattice-field.is-touch .lattice-progress input[type=range] { height: calc(36px / var(--lattice-camera-scale)); }
+.lattice-field.is-touch .lattice-poster.is-expanded .lattice-poster-copy { bottom: calc(110px / var(--lattice-camera-scale)); }
+
+.lattice-field.is-touch .lattice-chrome-transport { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.lattice-field.is-touch .lattice-chrome-details { grid-column: 1 / -1; grid-row: 2; }
+.lattice-field.is-touch .lattice-chrome-actions { justify-content: space-between; }
+.lattice-field.is-touch .lattice-chrome-time { grid-column: 2 / 4; margin: 0; justify-self: center; }
+.lattice-field.is-touch .lattice-secondary-action { grid-column: 4; justify-self: end; }
+.lattice-field.is-touch .lattice-poster.is-expanded .lattice-poster-copy { bottom: calc(150px / var(--lattice-camera-scale)); }

@@ -1,4 +1,6 @@
 import React from 'react';
+import { hasNowPlayingCardSong, useNowPlayingCardLayoutStore } from '../../app/overlays/now-playing-toast/nowPlayingCardLayoutStore';
+import { usePlaybackStore } from '../../../stores/usePlaybackStore';
 import { useTranslation } from 'react-i18next';
 import type { Theme } from '../../../types';
 import type { StageTrackPillMode } from '../../../stores/useStageSettingsStore';
@@ -34,6 +36,8 @@ const NowPlayingCardSettingsSection: React.FC<NowPlayingCardSettingsSectionProps
     onToggleShowOnHome,
 }) => {
     const { t } = useTranslation();
+    const canPosition = usePlaybackStore(hasNowPlayingCardSong);
+    const requestPosition = useNowPlayingCardLayoutStore(state => state.requestPositioning);
     const getOptionStyle = (selected: boolean): React.CSSProperties => selected
         ? {
             borderColor: accentOutlineColor,
@@ -55,6 +59,7 @@ const NowPlayingCardSettingsSection: React.FC<NowPlayingCardSettingsSectionProps
                     {t('options.stageTrackPillDesc')}
                 </div>
             </div>
+            <button type="button" disabled={!canPosition} onClick={requestPosition} className="min-h-11 rounded-lg border border-current/10 px-3 text-xs disabled:opacity-40">{t('options.stageTrackPillReposition')}</button>
             <div className="grid grid-cols-3 gap-2">
                 {(['auto', 'always', 'never'] as const).map(pillMode => (
                     <button

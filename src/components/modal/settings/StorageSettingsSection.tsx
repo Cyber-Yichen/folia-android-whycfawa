@@ -1,4 +1,5 @@
 import React from 'react';
+import AndroidCacheLimitSetting from './AndroidCacheLimitSetting';
 import { AudioWaveform, Check, Cloud, Command, Database, Disc3, Download, FolderOpen, HardDrive, Layers, Loader2, Pencil, PlayCircle, RefreshCw, Trash2, Upload, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { Theme } from '../../../types';
@@ -244,6 +245,20 @@ const StorageSettingsSection: React.FC<StorageSettingsSectionProps> = ({
         }
     };
 
+    const syncDetailsId = React.useId();
+    const saveSyncButton = (
+        <button
+            type="button"
+            onClick={handleSaveSyncConfig}
+            disabled={!syncConfigDirty}
+            className="px-3 py-2 bg-white/10 hover:bg-white/15 rounded-lg text-xs transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ color: 'var(--text-primary)' }}
+        >
+            <Check size={14} />
+            {t('options.r2SyncSave') || 'Save'}
+        </button>
+    );
+
     return (
         <>
             <SettingsAnchor anchorId="cacheDetails" label={t('options.cacheDetails') || 'Cache Details'}>
@@ -259,6 +274,7 @@ const StorageSettingsSection: React.FC<StorageSettingsSectionProps> = ({
                     </button>
                 </h3>
 
+                <AndroidCacheLimitSetting />
                 <div className="grid grid-cols-2 gap-3">
                     {cacheItems.map((item) => (
                         <div key={item.id} className={cacheRowClass}>
@@ -309,7 +325,7 @@ const StorageSettingsSection: React.FC<StorageSettingsSectionProps> = ({
                             <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
                                 {t('options.r2SyncEnable') || 'Enable sync server'}
                             </div>
-                            <div className="text-xs opacity-50 max-w-[360px]" style={{ color: 'var(--text-secondary)' }}>
+                            {draftSyncConfig.enabled && <div className="text-xs opacity-50 max-w-[360px]" style={{ color: 'var(--text-secondary)' }}>
                                 {t('options.r2SyncEnableDesc') || 'Sync appearance settings and AI themes through your own Cloudflare D1 Worker or self-hosted sync service.'}{' '}
                                 <a
                                     href="https://folia-site.cielaniska.top/guide/deploy-sync"
@@ -319,11 +335,15 @@ const StorageSettingsSection: React.FC<StorageSettingsSectionProps> = ({
                                 >
                                     {t('options.r2SyncDeployDocs') || 'Deployment guide'}
                                 </a>
-                            </div>
+                            </div>}
                         </div>
                         <button
                             type="button"
                             onClick={() => updateDraftSyncConfig({ enabled: !draftSyncConfig.enabled })}
+                            aria-label={t('options.r2SyncEnable')}
+                            aria-pressed={draftSyncConfig.enabled}
+                            aria-expanded={draftSyncConfig.enabled}
+                            aria-controls={syncDetailsId}
                             className={`w-12 h-6 rounded-full p-1 transition-colors shrink-0 ${!draftSyncConfig.enabled ? toggleOffBackgroundClass : ''}`}
                             style={{ backgroundColor: draftSyncConfig.enabled ? theme?.secondaryColor || 'rgba(114, 119, 134, 1)' : undefined }}
                         >
@@ -331,121 +351,115 @@ const StorageSettingsSection: React.FC<StorageSettingsSectionProps> = ({
                         </button>
                     </div>
 
-                    <div className="space-y-3">
-                        <label className="block space-y-1">
-                            <span className="text-xs opacity-60" style={{ color: 'var(--text-secondary)' }}>
-                                {t('options.r2SyncWorkerUrl') || 'Sync Server URL'}
-                            </span>
-                            <input
-                                type="url"
-                                value={draftSyncConfig.workerBaseUrl}
-                                onChange={(event) => updateDraftSyncConfig({ workerBaseUrl: event.target.value })}
-                                placeholder="https://folia-sync.example.workers.dev"
-                                className="w-full rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-sm outline-none focus:border-white/25"
-                                style={{ color: 'var(--text-primary)' }}
-                            />
-                        </label>
-                        <label className="block space-y-1">
-                            <span className="text-xs opacity-60" style={{ color: 'var(--text-secondary)' }}>
-                                {t('options.r2SyncToken') || 'Bearer Token'}
-                            </span>
-                            <input
-                                type="password"
-                                value={draftSyncConfig.authToken}
-                                onChange={(event) => updateDraftSyncConfig({ authToken: event.target.value })}
-                                placeholder={t('options.r2SyncTokenPlaceholder') || 'Worker SYNC_TOKEN'}
-                                className="w-full rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-sm outline-none focus:border-white/25"
-                                style={{ color: 'var(--text-primary)' }}
-                            />
-                        </label>
-                    </div>
-
-                    <div className="flex flex-col gap-3">
-                        {/* 基础配置与备份功能 */}
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div className="flex flex-wrap gap-2">
-                                <button
-                                    type="button"
-                                    onClick={handleSaveSyncConfig}
-                                    disabled={!syncConfigDirty}
-                                    className="px-3 py-2 bg-white/10 hover:bg-white/15 rounded-lg text-xs transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                    {!draftSyncConfig.enabled && syncConfigDirty && saveSyncButton}
+                    {draftSyncConfig.enabled && <div id={syncDetailsId} className="space-y-4">
+                        <div className="space-y-3">
+                            <label className="block space-y-1">
+                                <span className="text-xs opacity-60" style={{ color: 'var(--text-secondary)' }}>
+                                    {t('options.r2SyncWorkerUrl') || 'Sync Server URL'}
+                                </span>
+                                <input
+                                    type="url"
+                                    value={draftSyncConfig.workerBaseUrl}
+                                    onChange={(event) => updateDraftSyncConfig({ workerBaseUrl: event.target.value })}
+                                    placeholder="https://folia-sync.example.workers.dev"
+                                    className="w-full rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-sm outline-none focus:border-white/25"
                                     style={{ color: 'var(--text-primary)' }}
-                                >
-                                    <Check size={14} />
-                                    {t('options.r2SyncSave') || 'Save'}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => void handleTestSync()}
-                                    disabled={!syncConfigured || syncAction !== 'idle'}
-                                    className="px-3 py-2 bg-white/10 hover:bg-white/15 rounded-lg text-xs transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                                />
+                            </label>
+                            <label className="block space-y-1">
+                                <span className="text-xs opacity-60" style={{ color: 'var(--text-secondary)' }}>
+                                    {t('options.r2SyncToken') || 'Bearer Token'}
+                                </span>
+                                <input
+                                    type="password"
+                                    value={draftSyncConfig.authToken}
+                                    onChange={(event) => updateDraftSyncConfig({ authToken: event.target.value })}
+                                    placeholder={t('options.r2SyncTokenPlaceholder') || 'Worker SYNC_TOKEN'}
+                                    className="w-full rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-sm outline-none focus:border-white/25"
                                     style={{ color: 'var(--text-primary)' }}
-                                >
-                                    {syncAction === 'testing' ? <Loader2 size={14} className="animate-spin" /> : 
-                                     testResult === 'success' ? <Check size={14} className="text-green-500" /> :
-                                     testResult === 'error' ? <X size={14} className="text-red-500" /> :
-                                     <Cloud size={14} />}
-                                    {t('options.r2SyncTest') || 'Test'}
-                                </button>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => void handleExportSyncLibrary()}
-                                    disabled={syncAction !== 'idle'}
-                                    className="px-3 py-2 bg-white/10 hover:bg-white/15 rounded-lg text-xs transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-                                    style={{ color: 'var(--text-primary)' }}
-                                >
-                                    {syncAction === 'exporting' ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                                    {t('options.r2SyncExportLibrary') || 'Export library'}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => syncImportInputRef.current?.click()}
-                                    disabled={syncAction !== 'idle'}
-                                    className="px-3 py-2 bg-white/10 hover:bg-white/15 rounded-lg text-xs transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-                                    style={{ color: 'var(--text-primary)' }}
-                                >
-                                    {syncAction === 'importing' ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                                    {t('options.r2SyncImportLibrary') || 'Import library'}
-                                </button>
-                            </div>
+                                />
+                            </label>
                         </div>
 
-                        {/* 核心同步功能 */}
-                        <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-white/5">
-                            <button
-                                type="button"
-                                onClick={() => void handleSyncNow()}
-                                disabled={!draftSyncConfig.enabled || !syncConfigured || syncAction !== 'idle'}
-                                className="flex-1 px-3 py-2.5 bg-blue-500/10 hover:bg-blue-500/20 rounded-lg text-xs font-medium transition-colors flex justify-center items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed text-blue-400"
-                            >
-                                {syncAction === 'syncing' ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                                {t('options.r2SyncNow') || 'Sync AI Themes'}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => void handleSyncSettings()}
-                                disabled={!draftSyncConfig.enabled || !syncConfigured || syncAction !== 'idle'}
-                                className="flex-1 px-3 py-2.5 bg-purple-500/10 hover:bg-purple-500/20 rounded-lg text-xs font-medium transition-colors flex justify-center items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed text-purple-400"
-                            >
-                                {syncAction === 'syncingSettings' ? <Loader2 size={14} className="animate-spin" /> : <Layers size={14} />}
-                                {t('options.syncVisualSettings')}
-                            </button>
+                        <div className="flex flex-col gap-3">
+                            {/* 基础配置与备份功能 */}
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div className="flex flex-wrap gap-2">
+                                    {saveSyncButton}
+                                    <button
+                                        type="button"
+                                        onClick={() => void handleTestSync()}
+                                        disabled={!syncConfigured || syncAction !== 'idle'}
+                                        className="px-3 py-2 bg-white/10 hover:bg-white/15 rounded-lg text-xs transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                                        style={{ color: 'var(--text-primary)' }}
+                                    >
+                                        {syncAction === 'testing' ? <Loader2 size={14} className="animate-spin" /> :
+                                         testResult === 'success' ? <Check size={14} className="text-green-500" /> :
+                                         testResult === 'error' ? <X size={14} className="text-red-500" /> :
+                                         <Cloud size={14} />}
+                                        {t('options.r2SyncTest') || 'Test'}
+                                    </button>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => void handleExportSyncLibrary()}
+                                        disabled={syncAction !== 'idle'}
+                                        className="px-3 py-2 bg-white/10 hover:bg-white/15 rounded-lg text-xs transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                                        style={{ color: 'var(--text-primary)' }}
+                                    >
+                                        {syncAction === 'exporting' ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                                        {t('options.r2SyncExportLibrary') || 'Export library'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => syncImportInputRef.current?.click()}
+                                        disabled={syncAction !== 'idle'}
+                                        className="px-3 py-2 bg-white/10 hover:bg-white/15 rounded-lg text-xs transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                                        style={{ color: 'var(--text-primary)' }}
+                                    >
+                                        {syncAction === 'importing' ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                                        {t('options.r2SyncImportLibrary') || 'Import library'}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* 核心同步功能 */}
+                            <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-white/5">
+                                <button
+                                    type="button"
+                                    onClick={() => void handleSyncNow()}
+                                    disabled={!draftSyncConfig.enabled || !syncConfigured || syncAction !== 'idle'}
+                                    className="flex-1 px-3 py-2.5 bg-blue-500/10 hover:bg-blue-500/20 rounded-lg text-xs font-medium transition-colors flex justify-center items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed text-blue-400"
+                                >
+                                    {syncAction === 'syncing' ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                                    {t('options.r2SyncNow') || 'Sync AI Themes'}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => void handleSyncSettings()}
+                                    disabled={!draftSyncConfig.enabled || !syncConfigured || syncAction !== 'idle'}
+                                    className="flex-1 px-3 py-2.5 bg-purple-500/10 hover:bg-purple-500/20 rounded-lg text-xs font-medium transition-colors flex justify-center items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed text-purple-400"
+                                >
+                                    {syncAction === 'syncingSettings' ? <Loader2 size={14} className="animate-spin" /> : <Layers size={14} />}
+                                    {t('options.syncVisualSettings')}
+                                </button>
+                            </div>
+
+                            <input
+                                ref={syncImportInputRef}
+                                type="file"
+                                accept="application/zip,.zip,application/json,.json"
+                                className="hidden"
+                                onChange={(event) => void handleImportSyncLibrary(event.target.files?.[0] ?? null)}
+                            />
                         </div>
 
-                        <input
-                            ref={syncImportInputRef}
-                            type="file"
-                            accept="application/zip,.zip,application/json,.json"
-                            className="hidden"
-                            onChange={(event) => void handleImportSyncLibrary(event.target.files?.[0] ?? null)}
-                        />
-                    </div>
-
-                    <div className={`rounded-lg border px-3 py-2 text-xs ${(syncStatus.state === 'error' || testResult === 'error') && !syncSummaryMsg ? errorTextColor : testResult === 'success' ? 'text-green-500 border-green-500/20 bg-green-500/5' : ''}`} style={{ color: testResult === 'success' || testResult === 'error' ? undefined : 'var(--text-secondary)' }}>
-                        {syncSummaryMsg || syncStatusLabel}
-                    </div>
+                        <div className={`rounded-lg border px-3 py-2 text-xs ${(syncStatus.state === 'error' || testResult === 'error') && !syncSummaryMsg ? errorTextColor : testResult === 'success' ? 'text-green-500 border-green-500/20 bg-green-500/5' : ''}`} style={{ color: testResult === 'success' || testResult === 'error' ? undefined : 'var(--text-secondary)' }}>
+                            {syncSummaryMsg || syncStatusLabel}
+                        </div>
+                    </div>}
                 </div>
             </SettingsAnchor>
 

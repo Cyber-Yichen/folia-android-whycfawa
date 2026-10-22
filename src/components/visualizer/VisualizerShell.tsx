@@ -1,3 +1,5 @@
+import { isAndroidNativeRuntime } from '../../utils/platform';
+import { useImmersiveChromeStore } from '../../stores/useImmersiveChromeStore';
 import React, { forwardRef, useEffect, useRef, useState } from 'react';
 import { motion, MotionValue } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
@@ -74,7 +76,8 @@ const VisualizerShell = forwardRef<HTMLDivElement, VisualizerShellProps>(({
     const resolvedOnBack = sharedProps?.onBack;
     const resolvedIsPanelOpen = sharedProps?.isPanelOpen ?? false;
     const onPlayerPanelGuideHotspotChange = sharedProps?.onPlayerPanelGuideHotspotChange;
-    const isBackButtonVisible = sharedProps?.alwaysShowBackButton || showBackButton;
+    const nativeChromeHidden = useImmersiveChromeStore(state => state.immersiveChromeHidden);
+    const isBackButtonVisible = isAndroidNativeRuntime() ? (sharedProps?.isPreviewMode || !nativeChromeHidden) : sharedProps?.alwaysShowBackButton || showBackButton;
     const showStageLayers = !sharedProps?.isPreviewMode && !resolvedStaticMode;
 
     const updatePlayerPanelGuideHotspot = (isActive: boolean) => {
@@ -133,6 +136,7 @@ const VisualizerShell = forwardRef<HTMLDivElement, VisualizerShellProps>(({
                 opacity: resolvedVisualizerOpacity,
             }}
             onMouseMove={(event) => {
+                if (isAndroidNativeRuntime()) return;
                 // Back button is intentionally hidden most of the time.
                 // Only reveal it near the top-left hot area so it does not pollute the visual field.
                 const nearBackArea = event.clientX <= PLAYER_CHROME_HOTSPOT_SIZE && event.clientY <= PLAYER_CHROME_HOTSPOT_SIZE;
@@ -163,7 +167,7 @@ const VisualizerShell = forwardRef<HTMLDivElement, VisualizerShellProps>(({
             {resolvedOnBack && (
                 <motion.button
                     type="button"
-                    aria-label={t('ui.backToHome')}
+                    aria-label={t('ui.backToHome')} aria-hidden={!isBackButtonVisible || undefined} tabIndex={isBackButtonVisible ? 0 : -1}
                     initial={false}
                     animate={{
                         opacity: isBackButtonVisible ? 1 : 0,

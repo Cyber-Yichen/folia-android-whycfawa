@@ -1,3 +1,4 @@
+import { normalizeNowPlayingCardPosition } from './nowPlayingCardPosition';
 import {
     DEFAULT_CLADDAGH_TUNING,
     DEFAULT_DIORAMA_TUNING,
@@ -12,6 +13,8 @@ import {
     type DualTheme,
     type Theme,
 } from '../types';
+import { normalizeTouchPlayerBarAppearance } from './touchPlayerBarAppearance';
+import { normalizeRandomVisualizerModes } from './randomVisualizerModes';
 import { normalizeLumiereTuning } from './lumiereTuning';
 import { temperaPostProcessCompressionDefault } from '../services/temperaTuningDefaults';
 
@@ -496,6 +499,7 @@ const decompressLumiere = (o: any) => normalizeLumiereTuning(Object.fromEntries(
 
 export const compressConfig = (config: any): string => {
     const minified: any = {};
+    if (typeof config.androidPerformanceMode === 'boolean') minified.apm = config.androidPerformanceMode;
     if (config.theme) {
         minified.t = {
             l: compressTheme(config.theme.light),
@@ -504,6 +508,7 @@ export const compressConfig = (config: any): string => {
     }
     if (config.visualizerMode) minified.vm = config.visualizerMode;
     if (config.randomVisualizerModePerSong !== undefined) minified.rvms = config.randomVisualizerModePerSong;
+    if (config.randomVisualizerModes !== undefined) minified.rvm = normalizeRandomVisualizerModes(config.randomVisualizerModes);
     if (config.visualizerBackgroundMode) minified.vbm = config.visualizerBackgroundMode;
     if (config.backgroundOpacity !== undefined) minified.bo = config.backgroundOpacity;
     if (config.useCoverColorBg !== undefined) minified.ccb = config.useCoverColorBg;
@@ -560,6 +565,8 @@ export const compressConfig = (config: any): string => {
     if (config.stageTrackPillMode !== undefined) minified.stp = config.stageTrackPillMode;
     if (config.stageTrackPillTimeoutSec !== undefined) minified.stpt = config.stageTrackPillTimeoutSec;
     if (config.stageTrackPillOnHome !== undefined) minified.stph = config.stageTrackPillOnHome;
+    if (config.touchPlayerBar !== undefined) minified.tpb = normalizeTouchPlayerBarAppearance(config.touchPlayerBar);
+    if (config.stageTrackPillPosition !== undefined) minified.stpp = normalizeNowPlayingCardPosition(config.stageTrackPillPosition);
     if (config.libraryWallStackEdges !== undefined) minified.lwse = config.libraryWallStackEdges;
     if (config.libraryWallSeamClear !== undefined) minified.lwsc = config.libraryWallSeamClear;
     if (config.libraryWallSeamStyle !== undefined) minified.lwss = config.libraryWallSeamStyle;
@@ -598,6 +605,7 @@ export const decompressConfig = (str: string): any => {
         || parsed.t !== undefined
         || parsed.vm !== undefined
         || parsed.rvms !== undefined
+        || parsed.rvm !== undefined
         || parsed.ccb !== undefined
         || parsed.dvgb !== undefined
         || parsed.dvv !== undefined
@@ -623,9 +631,12 @@ export const decompressConfig = (str: string): any => {
         // The now playing card's three keys. Listed like the rest so a hand-written JSON that only
         // carries the card is still recognised as the minified shape rather than falling through to
         // the long-name branch, where none of them is a valid key.
+        || parsed.apm !== undefined
         || parsed.stp !== undefined
         || parsed.stpt !== undefined
         || parsed.stph !== undefined
+        || parsed.stpp !== undefined
+        || parsed.tpb !== undefined
         // The bravais wall's collection stack edges, info strip and backdrop, for the same reason.
         || parsed.lwse !== undefined
         || parsed.lwsc !== undefined
@@ -634,6 +645,7 @@ export const decompressConfig = (str: string): any => {
         || parsed.lwbb !== undefined;
     if (isMinified) {
         const decompressed: any = {};
+        if (typeof parsed.apm === 'boolean') decompressed.androidPerformanceMode = parsed.apm;
         if (parsed.t) {
             decompressed.theme = {
                 light: decompressTheme(parsed.t.l),
@@ -642,6 +654,7 @@ export const decompressConfig = (str: string): any => {
         }
         if (parsed.vm) decompressed.visualizerMode = parsed.vm;
         if (parsed.rvms !== undefined) decompressed.randomVisualizerModePerSong = parsed.rvms;
+        if (parsed.rvm !== undefined) decompressed.randomVisualizerModes = normalizeRandomVisualizerModes(parsed.rvm);
         if (parsed.vbm) decompressed.visualizerBackgroundMode = parsed.vbm;
         if (parsed.bo !== undefined) decompressed.backgroundOpacity = parsed.bo;
         if (parsed.ccb !== undefined) decompressed.useCoverColorBg = parsed.ccb;
@@ -697,6 +710,8 @@ export const decompressConfig = (str: string): any => {
         if (parsed.stp !== undefined) decompressed.stageTrackPillMode = parsed.stp;
         if (parsed.stpt !== undefined) decompressed.stageTrackPillTimeoutSec = parsed.stpt;
         if (parsed.stph !== undefined) decompressed.stageTrackPillOnHome = parsed.stph;
+        if (parsed.tpb !== undefined) decompressed.touchPlayerBar = normalizeTouchPlayerBarAppearance(parsed.tpb);
+        if (parsed.stpp !== undefined) decompressed.stageTrackPillPosition = normalizeNowPlayingCardPosition(parsed.stpp);
         if (parsed.lwse !== undefined) decompressed.libraryWallStackEdges = parsed.lwse;
         if (parsed.lwsc !== undefined) decompressed.libraryWallSeamClear = parsed.lwsc;
         if (parsed.lwss !== undefined) decompressed.libraryWallSeamStyle = parsed.lwss;
@@ -706,9 +721,9 @@ export const decompressConfig = (str: string): any => {
         return decompressed;
     } else {
         const validKeys = [
-            'theme', 'visualizerMode', 'randomVisualizerModePerSong', 'visualizerBackgroundMode', 'backgroundOpacity',
+            'theme', 'visualizerMode', 'randomVisualizerModePerSong', 'randomVisualizerModes', 'visualizerBackgroundMode', 'backgroundOpacity',
             'useCoverColorBg', 'disableVisualizerGeometricBackground', 'disableVisualizerVignette', 'staticMode',
-            'visualizerOpacity', 'hidePlayerTranslationSubtitle', 'showSubtitleTranslation', 'subtitleContentMode',
+            'androidPerformanceMode', 'visualizerOpacity', 'hidePlayerTranslationSubtitle', 'showSubtitleTranslation', 'subtitleContentMode',
             'subtitleOverlayBackground', 'subtitleUpcomingLyricsBlur', 'subtitleOverlayOpacity',
             'showHarmonySubtitle', 'harmonySubtitleBackground',
             'lyricsFontStyle', 'lyricsFontScale', 'lyricsFontWeight', 'lyricsFontFallbackFamilies',
@@ -719,13 +734,20 @@ export const decompressConfig = (str: string): any => {
             'pendoloTuning', 'sonnetTuning', 'temperaTuning', 'lumiereTuning', 'foliumParams',
             'urlBackgroundList', 'urlBackgroundSelectedId',
             'songThemeAutoSwitchEnabled', 'songThemeAutoGenerateEnabled', 'themeGenerationSource', 'followSystemTheme',
-            'stageTrackPillMode', 'stageTrackPillTimeoutSec', 'stageTrackPillOnHome',
+            'touchPlayerBar', 'stageTrackPillMode', 'stageTrackPillTimeoutSec', 'stageTrackPillOnHome', 'stageTrackPillPosition',
             'libraryWallStackEdges',
             'libraryWallSeamClear', 'libraryWallSeamStyle', 'libraryWallBackdropLyrics', 'libraryWallBackdropBlur',
         ];
         const hasValidKey = validKeys.some(k => parsed[k] !== undefined);
         if (!hasValidKey) {
             throw new Error('Invalid visual settings configuration');
+        }
+        if (parsed.randomVisualizerModes !== undefined) {
+            parsed.randomVisualizerModes = normalizeRandomVisualizerModes(parsed.randomVisualizerModes);
+        }
+        if (parsed.touchPlayerBar !== undefined) parsed.touchPlayerBar = normalizeTouchPlayerBarAppearance(parsed.touchPlayerBar);
+        if (parsed.stageTrackPillPosition !== undefined) {
+            parsed.stageTrackPillPosition = normalizeNowPlayingCardPosition(parsed.stageTrackPillPosition);
         }
         return parsed;
     }
