@@ -11,6 +11,8 @@ import {
     type CustomSelectOption,
 } from './CustomSelectMenu';
 import { useCustomSelectNavigation } from './useCustomSelectNavigation';
+import { getCustomSelectPosition, sameCustomSelectPosition } from './customSelectPosition';
+import { isAndroidNativeRuntime } from '../../utils/platform';
 
 // CustomSelect.tsx
 // A custom dropdown select component designed to replace the browser's default select element.
@@ -67,11 +69,6 @@ interface CustomSelectProps {
     triggerStyle?: React.CSSProperties;
 }
 
-const DROPDOWN_GAP = 4;
-const DROPDOWN_VIEWPORT_GUTTER = 8;
-const DROPDOWN_MAX_HEIGHT = 240;
-const DROPDOWN_MIN_PREFERRED_HEIGHT = 160;
-
 const TRIGGER_BASE_CLASS = 'w-full flex items-center justify-between border transition-all focus:outline-none disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer';
 const TRIGGER_SIZE_CLASS: Record<NonNullable<CustomSelectProps['size']>, string> = {
     default: 'rounded-xl px-4 py-3 text-sm',
@@ -119,41 +116,12 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         if (!container) return;
 
         const rect = container.getBoundingClientRect();
-        const spaceBelow = window.innerHeight - rect.bottom - DROPDOWN_GAP - DROPDOWN_VIEWPORT_GUTTER;
-        const spaceAbove = rect.top - DROPDOWN_GAP - DROPDOWN_VIEWPORT_GUTTER;
-        const useViewportPlacement = Math.max(spaceAbove, spaceBelow) < DROPDOWN_MIN_PREFERRED_HEIGHT;
-        const placement: CustomSelectMenuPosition['placement'] = useViewportPlacement
-            ? 'viewport'
-            : spaceBelow < DROPDOWN_MIN_PREFERRED_HEIGHT && spaceAbove > spaceBelow
-                ? 'top'
-                : 'bottom';
-        const availableHeight = placement === 'viewport'
-            ? window.innerHeight - DROPDOWN_VIEWPORT_GUTTER * 2
-            : placement === 'top'
-                ? spaceAbove
-                : spaceBelow;
-        const width = Math.min(rect.width, window.innerWidth - DROPDOWN_VIEWPORT_GUTTER * 2);
-        const left = Math.max(
-            DROPDOWN_VIEWPORT_GUTTER,
-            Math.min(rect.left, window.innerWidth - width - DROPDOWN_VIEWPORT_GUTTER),
-        );
-
-        setDropdownPosition({
-            left,
-            width,
-            maxHeight: Math.max(
-                72,
-                placement === 'viewport'
-                    ? availableHeight
-                    : Math.min(DROPDOWN_MAX_HEIGHT, availableHeight),
-            ),
-            placement,
-            ...(placement === 'viewport'
-                ? { top: DROPDOWN_VIEWPORT_GUTTER }
-                : placement === 'top'
-                ? { bottom: window.innerHeight - rect.top + DROPDOWN_GAP }
-                : { top: rect.bottom + DROPDOWN_GAP }),
-        });
+        const visible = window.visualViewport;
+        const viewport = visible && visible.width > 0 && visible.height > 0
+            ? { left: visible.offsetLeft, top: visible.offsetTop, width: visible.width, height: visible.height }
+            : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+        const next = getCustomSelectPosition(rect, viewport, window.innerHeight);
+        setDropdownPosition(current => sameCustomSelectPosition(current, next) ? current : next);
     }, []);
 
     useLayoutEffect(() => {
@@ -161,13 +129,28 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
             setDropdownPosition(null);
             return;
         }
-
+        let frame: number | null = null;
+        const schedule = (event?: Event) => {
+            // Scrolling options does not move the trigger and must not re-render the entire menu.
+            if (event?.type === 'scroll' && event.target instanceof Node && menuRef.current?.contains(event.target)) return;
+            if (frame !== null) return;
+            frame = requestAnimationFrame(() => { frame = null; updateDropdownPosition(); });
+        };
         updateDropdownPosition();
-        window.addEventListener('resize', updateDropdownPosition);
-        window.addEventListener('scroll', updateDropdownPosition, true);
+        const viewport = window.visualViewport;
+        window.addEventListener('resize', schedule);
+        window.addEventListener('scroll', schedule, true);
+        viewport?.addEventListener('resize', schedule);
+        viewport?.addEventListener('scroll', schedule);
+        const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => schedule());
+        if (containerRef.current) observer?.observe(containerRef.current);
         return () => {
-            window.removeEventListener('resize', updateDropdownPosition);
-            window.removeEventListener('scroll', updateDropdownPosition, true);
+            window.removeEventListener('resize', schedule);
+            window.removeEventListener('scroll', schedule, true);
+            viewport?.removeEventListener('resize', schedule);
+            viewport?.removeEventListener('scroll', schedule);
+            observer?.disconnect();
+            if (frame !== null) cancelAnimationFrame(frame);
         };
     }, [isOpen, updateDropdownPosition]);
 
@@ -209,7 +192,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                 aria-expanded={isOpen}
                 aria-controls={isMenuShown ? listboxId : undefined}
                 aria-activedescendant={isMenuShown && activeIndex >= 0 ? customSelectOptionId(listboxId, activeIndex) : undefined}
-                className={`${TRIGGER_BASE_CLASS} ${TRIGGER_SIZE_CLASS[size]}${triggerClassName ? ` ${triggerClassName}` : ''}`}
+                className={`${TRIGGER_BASE_CLASS} ${TRIGGER_SIZE_CLASS[size]}${isAndroidNativeRuntime() ? ' min-h-11 touch-manipulation' : ''}${triggerClassName ? ` ${triggerClassName}` : ''}`}
                 style={triggerInlineStyle}
             >
                 <span id={triggerLabelledBy ? valueId : undefined} className="truncate">

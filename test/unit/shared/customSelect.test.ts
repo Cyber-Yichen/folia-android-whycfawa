@@ -224,11 +224,11 @@ describe('CustomSelect', () => {
     it('follows the pointer and drops a pointer highlight when it leaves the menu', () => {
         const { trigger, options } = renderSelect();
         mouseClick(trigger);
-        act(() => { options()[0].dispatchEvent(new MouseEvent('mousemove', { bubbles: true })); });
+        act(() => { options()[0].dispatchEvent(new MouseEvent('pointermove', { bubbles: true })); });
         expect(options()[0].getAttribute('data-active')).toBe('true');
 
         act(() => {
-            document.querySelector('[role="listbox"]')!.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }));
+            document.querySelector('[role="listbox"]')!.dispatchEvent(new MouseEvent('pointerout', { bubbles: true, relatedTarget: document.body }));
         });
         expect(options()[0].getAttribute('data-active')).toBeNull();
         expect(options()[1].getAttribute('data-active')).toBe('true');
@@ -248,7 +248,7 @@ describe('CustomSelect', () => {
         expect(scrollIntoView.mock.contexts[1]).toBe(options()[2]);
         expect(scrollIntoView).toHaveBeenLastCalledWith({ block: 'nearest' });
 
-        act(() => { options()[0].dispatchEvent(new MouseEvent('mousemove', { bubbles: true })); });
+        act(() => { options()[0].dispatchEvent(new MouseEvent('pointermove', { bubbles: true })); });
         expect(options()[0].getAttribute('data-active')).toBe('true');
         expect(scrollIntoView).toHaveBeenCalledTimes(2);
 
@@ -321,7 +321,7 @@ describe('CustomSelect', () => {
 
         // 指针高亮不滚动。
         const scrollCalls = scrollTo.mock.calls.length;
-        act(() => { row(10)!.dispatchEvent(new MouseEvent('mousemove', { bubbles: true })); });
+        act(() => { row(10)!.dispatchEvent(new MouseEvent('pointermove', { bubbles: true })); });
         expect(row(10)?.getAttribute('data-active')).toBe('true');
         expect(row(12)?.getAttribute('data-active')).toBeNull();
         expect(scrollTo.mock.calls.length).toBe(scrollCalls);
@@ -441,12 +441,25 @@ describe('CustomSelect', () => {
         press(trigger, 'ArrowDown');
         expect(document.activeElement).toBe(trigger);
         expect(trigger.getAttribute('aria-activedescendant')).toBe(ids[2]);
-        act(() => { options()[0].dispatchEvent(new MouseEvent('mousemove', { bubbles: true })); });
+        act(() => { options()[0].dispatchEvent(new MouseEvent('pointermove', { bubbles: true })); });
         expect(trigger.getAttribute('aria-activedescendant')).toBe(ids[0]);
 
         press(trigger, 'Escape');
         expect(trigger.hasAttribute('aria-controls')).toBe(false);
         expect(trigger.hasAttribute('aria-activedescendant')).toBe(false);
+    });
+
+    it('ignores touch pointer motion when scrolling across options', () => {
+        const { trigger, options } = renderSelect();
+        mouseClick(trigger);
+        const active = trigger.getAttribute('aria-activedescendant');
+        act(() => {
+            const event = new MouseEvent('pointermove', { bubbles: true });
+            Object.defineProperty(event, 'pointerType', { value: 'touch' });
+            options()[0].dispatchEvent(event);
+        });
+        expect(trigger.getAttribute('aria-activedescendant')).toBe(active);
+        expect(options()[0].getAttribute('data-active')).toBeNull();
     });
 
     it('keeps options owned by the listbox in the virtualized branch and tells their position', async () => {

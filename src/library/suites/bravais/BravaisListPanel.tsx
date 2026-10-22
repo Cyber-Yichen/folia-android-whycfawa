@@ -1,3 +1,5 @@
+import { isAndroidNativeRuntime } from '../../../utils/platform';
+import { CustomSelect } from '../../../components/shared/CustomSelect';
 import React, { useEffect, useMemo } from 'react';
 import { ArrowDownWideNarrow, ArrowUpNarrowWide, ChevronLeft, ListPlus, Play } from 'lucide-react';
 import { List, useListRef, type RowComponentProps } from 'react-window';
@@ -30,13 +32,16 @@ type RowProps = {
     highlightKey: string | null;
     nowPlayingKey: string | null;
     actions: BravaisPanelActions;
+    touch: boolean;
 };
 
-const ListRow = ({ index, style, items, highlightKey, nowPlayingKey, actions }: RowComponentProps<RowProps>): React.ReactElement | null => {
+const ListRow = ({ index, style, items, highlightKey, nowPlayingKey, actions, touch }: RowComponentProps<RowProps>): React.ReactElement | null => {
+    const { t } = useTranslation();
     const item = items[index];
     if (!item) return null;
     const classes = [
         'bravais-list-row',
+        touch ? 'is-touch' : '',
         item.key === highlightKey ? 'is-linked' : '',
         item.key === nowPlayingKey ? 'is-current' : '',
         item.unavailable ? 'is-unavailable' : '',
@@ -45,13 +50,13 @@ const ListRow = ({ index, style, items, highlightKey, nowPlayingKey, actions }: 
         <div
             style={style}
             className={classes}
-            role="option"
-            aria-selected={item.key === highlightKey}
+            role={touch ? 'listitem' : 'option'}
+            aria-selected={touch ? undefined : item.key === highlightKey}
             data-bravais-list-row={item.key}
-            onMouseEnter={() => setBravaisLinkedKey(item.key)}
-            onMouseLeave={() => setBravaisLinkedKey(null)}
+            onPointerEnter={event => { if (event.pointerType !== 'touch') setBravaisLinkedKey(item.key); }}
+            onPointerLeave={event => { if (event.pointerType !== 'touch') setBravaisLinkedKey(null); }}
             onClick={() => actions.locate(item.key)}
-            onDoubleClick={() => actions.play(item.key)}
+            onDoubleClick={touch ? undefined : () => actions.play(item.key)}
         >
             <span className="bravais-list-badge">{item.badge}</span>
             <span className="bravais-list-text">
@@ -59,12 +64,18 @@ const ListRow = ({ index, style, items, highlightKey, nowPlayingKey, actions }: 
                 {item.subtitle && <small>{item.subtitle}</small>}
             </span>
             {item.durationLabel && <span className="bravais-list-time">{item.durationLabel}</span>}
+            {touch && item.kind === 'track' && <button type="button" className="bravais-list-play" disabled={item.unavailable}
+                aria-label={t('player.play') + ' ' + item.title}
+                onClick={event => { event.stopPropagation(); actions.play(item.key); }}>
+                <Play size={18} fill="currentColor" aria-hidden />
+            </button>}
         </div>
     );
 };
 
 const BravaisListPanel: React.FC<{ layer: BravaisLayer; depth: number; actions: BravaisPanelActions }> = ({ layer, actions }) => {
     const { t } = useTranslation();
+    const touch = isAndroidNativeRuntime();
     const listRef = useListRef(null);
     const { seam, entries } = layer;
     const collection = seam.collection;
@@ -91,7 +102,8 @@ const BravaisListPanel: React.FC<{ layer: BravaisLayer; depth: number; actions: 
         highlightKey,
         nowPlayingKey: layer.nowPlayingKey,
         actions,
-    }), [actions, highlightKey, items, layer.nowPlayingKey]);
+        touch,
+    }), [actions, highlightKey, items, layer.nowPlayingKey, touch]);
     const sort = entries?.sort;
 
     return (
@@ -111,26 +123,30 @@ const BravaisListPanel: React.FC<{ layer: BravaisLayer; depth: number; actions: 
             <div className="bravais-seam-meta">{seam.meta}</div>
             {sort && (
                 <div className="bravais-panel-tools" data-bravais-list-sort>
-                    <select
+                    {touch ? <div className="min-w-0 flex-1" data-bravais-list-sort-field>
+                        <CustomSelect value={sort.field} onChange={sort.setField}
+                            options={sort.fields.map(field => ({ value: field.value, label: field.label }))}
+                            ariaLabel={entries?.panelTitle} size="compact" />
+                    </div> : <select
                         value={sort.field}
                         aria-label={entries?.panelTitle}
                         data-bravais-list-sort-field
                         onChange={event => sort.setField(event.target.value)}
                     >
                         {sort.fields.map(field => <option key={field.value} value={field.value}>{field.label}</option>)}
-                    </select>
+                    </select>}
                     <button type="button" className="bravais-seam-icon" data-bravais-list-sort-direction={sort.direction}
                         onClick={sort.toggleDirection} aria-label={sort.directionLabel} title={sort.directionLabel}>
                         {sort.direction === 'asc' ? <ArrowUpNarrowWide aria-hidden /> : <ArrowDownWideNarrow aria-hidden />}
                     </button>
                 </div>
             )}
-            <div className="bravais-panel-list" role="listbox" aria-label={entries?.panelTitle}>
+            <div className="bravais-panel-list" role={touch ? 'list' : 'listbox'} aria-label={entries?.panelTitle}>
                 {items.length > 0 ? (
                     <List
                         listRef={listRef}
                         rowCount={items.length}
-                        rowHeight={BRAVAIS_LIST_ROW_HEIGHT}
+                        rowHeight={touch ? 56 : BRAVAIS_LIST_ROW_HEIGHT}
                         rowComponent={ListRow}
                         rowProps={rowProps}
                         overscanCount={6}

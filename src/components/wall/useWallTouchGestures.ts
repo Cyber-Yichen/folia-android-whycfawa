@@ -1,4 +1,5 @@
 import { animate } from 'framer-motion';
+import { createTouchCameraFrame } from './touchCameraFrame';
 import { useCallback, useEffect, useRef, type MutableRefObject, type PointerEvent } from 'react';
 import type { LatticeCamera } from './useWallCameraPan';
 import { touchDistance, touchMidpoint, zoomWallCamera, TOUCH_WALL_INERTIA, type TouchPoint } from './wallTouchMotion';
@@ -15,6 +16,12 @@ type Options = {
 };
 export const useWallTouchGestures = ({ cameraRef, animationRef, didDragRef, stopPan, updateCamera, reducedMotion, onZoomEnd }: Options) => {
     const contacts = useRef(new Map<number, TouchPoint>());
+    const originRef = useRef<{ left: number; top: number } | null>(null);
+    const writeCameraRef = useRef(updateCamera);
+    writeCameraRef.current = updateCamera;
+    const frameRef = useRef<ReturnType<typeof createTouchCameraFrame> | null>(null);
+    if (!frameRef.current) frameRef.current = createTouchCameraFrame(camera =>
+        writeCameraRef.current(camera.x, camera.y, camera.scale));
     const drag = useRef<{ start: TouchPoint; camera: LatticeCamera; last: TouchPoint; time: number; vx: number; vy: number; moved: boolean } | null>(null);
     const pinch = useRef<{ camera: LatticeCamera; anchor: TouchPoint; distance: number } | null>(null);
     const zoomEndRef = useRef(onZoomEnd);
@@ -24,13 +31,15 @@ export const useWallTouchGestures = ({ cameraRef, animationRef, didDragRef, stop
         drag.current = point ? { start: point, last: point, camera: { ...cameraRef.current }, time, vx: 0, vy: 0, moved: false } : null;
     };
     const localPoint = (event: PointerEvent<HTMLDivElement>): TouchPoint => {
-        const rect = event.currentTarget.getBoundingClientRect();
+        const rect = originRef.current ?? event.currentTarget.getBoundingClientRect();
         return { x: event.clientX - rect.left, y: event.clientY - rect.top };
     };
     const onPointerDown = useCallback((event: PointerEvent<HTMLDivElement>) => {
         if (event.target instanceof Element && event.target.closest('button, input, textarea, select, a, [role="slider"], [contenteditable="true"]')) return;
         if (contacts.current.size >= 2) return;
+        frameRef.current!.flush();
         stopPan();
+        if (contacts.current.size === 0) originRef.current = event.currentTarget.getBoundingClientRect();
         contacts.current.set(event.pointerId, localPoint(event));
         if (contacts.current.size === 1) {
             didDragRef.current = false;
@@ -51,7 +60,7 @@ export const useWallTouchGestures = ({ cameraRef, animationRef, didDragRef, stop
         if (zoom && contacts.current.size === 2) {
             const [a, b] = [...contacts.current.values()];
             const next = zoomWallCamera(zoom.camera, zoom.anchor, touchMidpoint(a, b), touchDistance(a, b) / zoom.distance);
-            updateCamera(next.x, next.y, next.scale);
+            frameRef.current!.schedule(next);
             return;
         }
         const pan = drag.current;
@@ -65,16 +74,18 @@ export const useWallTouchGestures = ({ cameraRef, animationRef, didDragRef, stop
             pan.vy += ((point.y - pan.last.y) / dt * 1000 - pan.vy) * blend;
         }
         pan.last = point; pan.time = event.timeStamp;
-        if (pan.moved) updateCamera(pan.camera.x + dx, pan.camera.y + dy);
-    }, [didDragRef, updateCamera]);
+        if (pan.moved) frameRef.current!.schedule({ x: pan.camera.x + dx, y: pan.camera.y + dy, scale: pan.camera.scale });
+    }, [didDragRef]);
     const finish = useCallback((event: PointerEvent<HTMLDivElement>, cancelled: boolean) => {
         if (!contacts.current.delete(event.pointerId)) return;
+        if (cancelled) frameRef.current!.cancel(); else frameRef.current!.flush();
         const wasPinching = pinch.current !== null;
         if (wasPinching) { pinch.current = null; zoomEndRef.current?.(cameraRef.current.scale); }
         const pan = drag.current;
         drag.current = null;
         if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
         if (contacts.current.size) { rebase(event.timeStamp); return; }
+        originRef.current = null;
         if (cancelled || wasPinching || !pan?.moved || reducedMotion || event.timeStamp - pan.time > TOUCH_WALL_INERTIA.staleReleaseMs) return;
         const speed = Math.hypot(pan.vx, pan.vy);
         if (speed < TOUCH_WALL_INERTIA.minSpeed) return;
@@ -87,14 +98,17 @@ export const useWallTouchGestures = ({ cameraRef, animationRef, didDragRef, stop
     }, [animationRef, cameraRef, reducedMotion, updateCamera]);
     useEffect(() => {
         const cancel = () => {
+            frameRef.current!.cancel();
+            originRef.current = null;
             if (pinch.current) zoomEndRef.current?.(cameraRef.current.scale);
             contacts.current.clear(); drag.current = null; pinch.current = null; stopPan();
         };
         const endOutside = (event: globalThis.PointerEvent) => { if (contacts.current.has(event.pointerId)) cancel(); };
         window.addEventListener('blur', cancel);
+        window.addEventListener('resize', cancel);
         window.addEventListener('pointerup', endOutside);
         window.addEventListener('pointercancel', endOutside);
-        return () => { window.removeEventListener('blur', cancel); window.removeEventListener('pointerup', endOutside); window.removeEventListener('pointercancel', endOutside); cancel(); };
+        return () => { window.removeEventListener('blur', cancel); window.removeEventListener('resize', cancel); window.removeEventListener('pointerup', endOutside); window.removeEventListener('pointercancel', endOutside); cancel(); };
     }, [cameraRef, stopPan]);
     return { hasActivePointers: () => contacts.current.size > 0, onPointerDown, onPointerMove, onPointerUp: (event: PointerEvent<HTMLDivElement>) => finish(event, false), onPointerCancel: (event: PointerEvent<HTMLDivElement>) => finish(event, true) };
 };

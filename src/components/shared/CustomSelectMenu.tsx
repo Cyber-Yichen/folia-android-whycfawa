@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Check } from 'lucide-react';
+import { isAndroidNativeRuntime } from '../../utils/platform';
 import { List, useListRef, type RowComponentProps } from 'react-window';
 
 // CustomSelectMenu.tsx
@@ -81,6 +82,7 @@ type OptionRowProps = {
     isDaylight: boolean;
     accentColor: string;
     textColor: string;
+    rowHeight: number;
     onActivate: (value: string) => void;
     onSelect: (value: string) => void;
 };
@@ -124,7 +126,7 @@ const OptionButton: React.FC<{
             ...(fixedHeight ? { height: fixedHeight, paddingTop: 0, paddingBottom: 0 } : {}),
         }}
         // mousemove 而不是 mouseenter：键盘把列表滚动后，停着不动的指针下面换了一行，不该把高亮抢走。
-        onMouseMove={isActive ? undefined : () => onActivate(option.value)}
+        onPointerMove={isActive ? undefined : event => { if (event.pointerType !== 'touch') onActivate(option.value); }}
     >
         <span className="truncate mr-2">{option.label}</span>
         {isSelected && (
@@ -147,6 +149,7 @@ const CustomSelectMenuRow = ({
     isDaylight,
     accentColor,
     textColor,
+    rowHeight,
     onActivate,
     onSelect,
 }: RowComponentProps<OptionRowProps>): React.ReactElement | null => {
@@ -167,7 +170,7 @@ const CustomSelectMenuRow = ({
                 isDaylight={isDaylight}
                 accentColor={accentColor}
                 textColor={textColor}
-                fixedHeight={OPTION_ROW_HEIGHT}
+                fixedHeight={rowHeight}
                 onActivate={onActivate}
                 onSelect={onSelect}
             />
@@ -194,6 +197,7 @@ export const CustomSelectMenu: React.FC<CustomSelectMenuProps> = ({
     onSelect,
 }) => {
     const isVirtualized = options.length >= VIRTUALIZE_THRESHOLD;
+    const optionHeight = isAndroidNativeRuntime() ? 44 : OPTION_ROW_HEIGHT;
     const listRef = useListRef(null);
 
     const rowProps = useMemo(() => ({
@@ -204,9 +208,10 @@ export const CustomSelectMenu: React.FC<CustomSelectMenuProps> = ({
         isDaylight,
         accentColor,
         textColor,
+        rowHeight: optionHeight,
         onActivate,
         onSelect,
-    }), [listboxId, options, value, activeIndex, isDaylight, accentColor, textColor, onActivate, onSelect]);
+    }), [listboxId, options, value, activeIndex, isDaylight, accentColor, textColor, optionHeight, onActivate, onSelect]);
 
     // 键盘移动高亮、或用键盘打开菜单后，把高亮项滚进视野（就近对齐，已经看得见就不动）。
     useEffect(() => {
@@ -234,10 +239,10 @@ export const CustomSelectMenu: React.FC<CustomSelectMenuProps> = ({
     }, [activeIndex, followActive, isVirtualized, listRef, menuRef, options.length]);
 
     const listHeight = Math.max(
-        OPTION_ROW_HEIGHT,
+        optionHeight,
         Math.min(
             position.maxHeight - MENU_PADDING,
-            options.length * (OPTION_ROW_HEIGHT + OPTION_ROW_GAP) - OPTION_ROW_GAP,
+            options.length * (optionHeight + OPTION_ROW_GAP) - OPTION_ROW_GAP,
         ),
     );
 
@@ -262,7 +267,7 @@ export const CustomSelectMenu: React.FC<CustomSelectMenuProps> = ({
             role="listbox"
             aria-label={ariaLabel}
             aria-labelledby={ariaLabelledBy}
-            onMouseLeave={onPointerLeave}
+            onPointerLeave={event => { if (event.pointerType !== 'touch') onPointerLeave(); }}
             style={{
                 left: position.left,
                 top: position.top,
@@ -280,7 +285,7 @@ export const CustomSelectMenu: React.FC<CustomSelectMenuProps> = ({
                         listRef={listRef}
                         role="presentation"
                         rowCount={options.length}
-                        rowHeight={OPTION_ROW_HEIGHT + OPTION_ROW_GAP}
+                        rowHeight={optionHeight + OPTION_ROW_GAP}
                         rowComponent={CustomSelectMenuRow}
                         rowProps={rowProps}
                         overscanCount={4}
@@ -295,6 +300,7 @@ export const CustomSelectMenu: React.FC<CustomSelectMenuProps> = ({
                             key={option.value}
                             id={customSelectOptionId(listboxId, index)}
                             option={option}
+                            fixedHeight={isAndroidNativeRuntime() ? optionHeight : undefined}
                             index={index}
                             isSelected={option.value === value}
                             isActive={index === activeIndex}

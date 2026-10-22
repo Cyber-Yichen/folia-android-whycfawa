@@ -347,10 +347,10 @@ function BravaisTile({
             data-bravais-hidden={display?.hidden || undefined}
             data-bravais-special={display?.special}
             data-bravais-form={display && form !== 'poster' ? form : undefined}
-            onMouseEnter={(event) => {
-                if (!pointerStayed(event)) handlers.hover(slotKey);
+            onPointerEnter={(event) => {
+                if (event.pointerType !== 'touch' && !pointerStayed(event)) handlers.hover(slotKey);
             }}
-            onMouseLeave={() => handlers.hover(null)}
+            onPointerLeave={event => { if (event.pointerType !== 'touch') handlers.hover(null); }}
         >
             <article
                 ref={faceRef}

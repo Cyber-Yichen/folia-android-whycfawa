@@ -405,3 +405,31 @@
 }
 
 :root[data-reduce-motion~='lattice'] .bravais-root.is-loading .lattice-poster.bravais-tile-face.is-wall { animation: none; }
+
+
+/* Native list playback is a separate touch target from locating the song on the wall. */
+.bravais-list-row.is-touch {
+    grid-template-columns: 3ch minmax(0, 1fr) auto 44px;
+    gap: 6px;
+    touch-action: pan-y;
+}
+.bravais-list-row.is-touch .bravais-list-time { grid-column: 3; }
+.bravais-list-row.is-touch .bravais-list-play {
+    display: grid;
+    grid-column: 4;
+    width: 44px;
+    height: 44px;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 12px;
+    color: var(--text-primary, currentColor);
+    background: color-mix(in srgb, currentColor 8%, transparent);
+    touch-action: manipulation;
+}
+.bravais-list-play:disabled { opacity: 0.4; }
+.bravais-list-play:active:not(:disabled) { background: color-mix(in srgb, currentColor 18%, transparent); }
+
+@media (hover: none) {
+    .bravais-list-row:hover:not(.is-linked) { background: transparent; }
+}
